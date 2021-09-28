@@ -10,12 +10,12 @@ def _path(*args):
     return osp.join(osp.split(__file__)[0], *args)
 
 def _readme():
-    with open(_path('README.md')) as _fo:
-        return _fo.read()
+    with open(_path('README.md')) as _fi:
+        return _fi.read()
 
 def _requirements():
-    with open(_path('requirements.txt')) as _fo:
-        return _fo.read().split()
+    with open(_path('requirements.txt')) as _fi:
+        return _fi.read().split()
 
 def _set_version(version):
     with open(_path('magi','version.py'), 'w') as _fi:
@@ -60,3 +60,4 @@ def build_submodules(submodules, root="extern"):
 
 if __name__ == '__main__':
     build_packages()
+    build_submodules(["koreto"], "extern")

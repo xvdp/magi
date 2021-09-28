@@ -1,0 +1,4 @@
+dist/
+build/
+magi.egg-info/
+sandbox/

@@ -1,0 +1,3 @@
+[submodule "extern/koreto"]
+	path = extern/koreto
+	url = https://github.com/xvdp/koreto.git

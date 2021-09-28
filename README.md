@@ -29,3 +29,9 @@ Caveat: not thoroughly tested or optimized in multi-GPU settings
 
 
 WIP
+### Installation
+Magi depends on submodules
+```
+git clone https://github.com/xvdp/magi --recursive && cd magi
+python setup.py install
+```
