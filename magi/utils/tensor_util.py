@@ -73,13 +73,33 @@ yxhwa__path(data)
 yxhwa__splitpath
     alias: xywha__splitpath(0
 """
+from typing import Any, NoReturn
 import math
+import logging
 import torch
+from koreto import Col
 from .. import config
 # pylint: disable=no-member
 # pylint: disable=not-callable
 
-# utils
+def warn_grad_inplace(inplace: bool, grad: bool, in_config: bool=True, verbose: bool=True) -> bool:
+    """ inplace operations cannot be used with backprop
+        if grad: inplace: False
+        Args:
+            inplace
+            grad        check against, overrides inplace
+            in_config   clobbers downstream inplace
+            verbose
+    """
+    if grad and inplace:
+        if verbose:
+            logging.warning(f"{Col.YB}Set config.INPLACE=false for transforms: found tensors requiring grad!{Col.AU}")
+        inplace = False
+
+    if inplace is not None and in_config:
+        config.set_inplace(inplace)
+    return inplace
+
 def check_tensor(data, dtype=None, device=None, grad=None):
     """ Validates tensor or tensor list dtype, device and or grad
         Validates contiguity
@@ -97,6 +117,22 @@ def check_tensor(data, dtype=None, device=None, grad=None):
     assert_tensor_device(data, device)
     assert_tensor_grad(data, grad)
     return size
+
+class TensorList(list):
+    """ List / Dictionary Composite To handle batches
+
+    """
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args)
+        for k in kwargs:
+            self.__dict__[k] = kwargs[k]
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        return super().__setattr__(name, value)
+
+    def __types__(self):
+        return [type(item) for item in self]
+
 
 def assert_tensor_list_eq(tensor_list, tolerant=False):
     shapes = [t.shape for t in tensor_list]

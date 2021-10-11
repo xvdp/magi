@@ -2,3 +2,5 @@ dist/
 build/
 magi.egg-info/
 sandbox/
+__pycache__/
+

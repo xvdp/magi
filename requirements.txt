@@ -1,3 +1,5 @@
+accimage
 numpy
+opencv-python
 pillow
 pyyaml
