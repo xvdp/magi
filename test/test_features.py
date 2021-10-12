@@ -5,7 +5,7 @@ import os
 import pytest
 import numpy as np
 import torch
-from magi.containers import DataItem, ListDict, flatlist
+from magi.features import DataItem, ListDict, flatlist
 
 # pylint: disable=no-member
 def test_listdict():
@@ -136,20 +136,25 @@ def test_to_tensor_all():
 
 def test_to_tensor_dtype():
 
-    dtype = dtype=["float32", "uint8", "float64", "float16", "int64", None]
+    dtype = dtype=["float32", "uint8", "float64", "float16", "str", None]
     data = DataItem([[[0,1],[0,2]], [1,1,4], [[[1]],[[.1]]], 12., 0, "asdf"], tags=["image", "list", "dict", "int", "float", "str"],dtype=dtype)
     data.to_torch()
 
-    for i in [0,1,2,3,4]:
+    for i in [0,1,2,3]:
         assert data[i].dtype == torch.__dict__[dtype[i]], f"found, { data[i].dtype }"
 
+
     data.to(device='cuda')
-    for i in [0,1,2,3,4]:
+    for i in [0,1,2,3]:
         assert data[i].device.type == "cuda",  f"found {data[i].device}, {data[i].dtype}"
 
     data.to(dtype=torch.float32, device="cpu")
-    for i in [0,1,2,3,4]:
+    for i in [0,1,2,3]:
         assert data[i].device.type == "cpu" and data[i].dtype == torch.float32, f"found {data[i].device}, {data[i].dtype}"
+
+
+    assert isinstance(data[4], int), "should not have been converted it was tagged as dtype 'str' which is not in torch.__dict__'"
+    assert isinstance(data[5], str)
 
 
 def test_to_tensor_cuda_exclude_deepclone():

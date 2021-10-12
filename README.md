@@ -4,8 +4,29 @@
 A collection of augmentation, training and dataloader wrappers for `pytorch` that I use on various projects, built this before torchvision supported transforms on tensors. This repo is an extraction of common methods from larger private project.
 
 ### features
-Dataset features are an openended problem, a dataset may provide images with class names, regression targets, or a collection of data of different modes.
-To address this openendednes this adds `DataItem` class, a feature that is both a list and can contain tags to aid the handling of data.   
+Dataset features are an openended problem, a dataset may provide data with class names, regression targets, or a collection of data of different modes. <br>
+To address this openendednes this adds an addressable list, `class DataItem(list)` a feature that is both a list and can contain tags to aid the handling of data.<br>
+DataItem can be cast to `list(DataItem)` or be used to carry any kind of structured data.
+For example:
+
+```python
+item = DataItem([[[0,1],[2,3]],[[1,2],[3,4]],  [125,125]], meta=["data","data", "id"], dtype=["float32", "float16", "int"])
+print(item, isinstance(item, list) # -> [[[0, 1], [2, 3]], [[1, 2], [3, 4]], [125, 125]] True
+
+item.to_torch(device="cuda")
+print(item) # returns each item with the assigned dype
+# -> [tensor([[0., 1.],
+#             [2., 3.]], device='cuda:0'), tensor([[1., 2.],
+#             [3., 4.]], device='cuda:0', dtype=torch.float16), tensor([125, 125], device='cuda:0', dtype=torch.int32)]
+print(item.keys) #-> ['meta', 'dtype']
+print(item.meta) #-> ['data', 'id']
+item.get("meta", "data") # returns
+#-> [tensor([[0., 1.],
+#           [2., 3.]], device='cuda:0'), tensor([[1., 2.],
+#           [3., 4.]], device='cuda:0', dtype=torch.float16)]
+
+```
+
 
 
 ### augmentation

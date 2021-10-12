@@ -37,7 +37,7 @@ class WIDER(MDataset):
 
     >>> W.set_filters()
     """
-    def __init__(self, data_root:str, mode: str="train", dtype: str="float32", device: str="cpu",
+    def __init__(self, data_root:str, mode: str="train", dtype: str=None, device: str="cpu",
                  torch_transforms=None, keep: list=None, **kwargs) -> None:
         """ Args
             data_root   (str) path where dset was uncompressed
@@ -56,7 +56,7 @@ class WIDER(MDataset):
         assert osp.isdir(data_root), f"cd {data_root} not found"
 
         self.images = []
-        self.dtype = dtype
+        self.dtype = dtype if dtype is not None else torch.get_default_dtype()
         self.device = device
         self.keep = keep
 

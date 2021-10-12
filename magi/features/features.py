@@ -89,8 +89,14 @@ class DataItem(ListDict):
     """ Generic Feature Datastructure.
     Keeps data as list, addresses in a dict
 
-    Stricter version of ListDict requiring that public keys contain lists of same length as main list
+    Stricter ListDict() requiring that public keys contain lists of same length as main list
         private keys may contain any data
+
+    Does not enforce typing or require specific type keys.
+    By convention however keys .meta and .dtype will be interpreted by magi augments and datasets
+        .meta: data_2d (tbd ..._1d, _3d) / transforms treated as images
+        .meta: positions_2d (tbd ..._1d, _3d) /transforms treated as positions.
+        .dtype: if present specific dtypes will be applied to list elements on handling
 
         self -> list
         self.__dict__ -> dict
@@ -112,7 +118,7 @@ class DataItem(ListDict):
         .to(**kwargs) runs tensor.to(**kwargs) for all kwargs in data
         .keep(**kwargs) # deletes all entries not in key values # keep(None) keeps everything
         .keep(*args)    # deletes all in indices
-        .deepcopy()     # alias deepclone() tensors are cloned and
+        .deepcopy() | .deepclone()   # data is deepcopied, tensors are cloned and detached
 
     ListDict methods:
         .clear()
@@ -125,7 +131,7 @@ class DataItem(ListDict):
         .pop(index)
         .reverse()
         .index()
-        .copy() # alias .clone(), all tensors are cloned
+        .copy() | .clone() # data is copied tensors are cloned
 
     list methods removed
         .sort() # instances in DataItem are not of same type generally.
@@ -229,7 +235,8 @@ class DataItem(ListDict):
 
     def to_torch(self, dtype: Union[torch.dtype, list, tuple]=None, device: Union[torch.device, str]="cpu",
                  grad: bool=False, include: Union[list, tuple]=None, exclude: Union[list, tuple]=None, **kwargs):
-        """ converts all numeric list items to torch
+        """ converts all numeric list items to torch except when dtype=[...] is passed or dtype key with value
+        not in torch.__dict__, that does not translate to torch.dtype
         Args
             dtype       (str, torch.dtype, list [None]) | .__dict__['dtype'] if 'dtype' in .__dict__
             device      (str, torch.device ['cpu'])
@@ -248,8 +255,9 @@ class DataItem(ListDict):
         # convert to list
         elif dtype is None or isinstance(dtype, (str, torch.dtype)):
             dtype = [dtype for i in range(len(self))]
-        # ensure dtype is valid torch.dtype
-        dtype = torch_dtype(dtype)
+
+        # ensure dtype is valid torch.dtype, default to None: take no action
+        dtype = torch_dtype(dtype, fault_tolerant=True)
 
         # filter indices
         include = self._positive_indices(include) if include is not None else range(len(self))

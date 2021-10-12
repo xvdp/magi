@@ -15,13 +15,13 @@ def _wider_folder():
 def test_widerload():
     W = WIDER(data_root=WIDER_ROOT)
 
-
     item = W.images[99]
     name = item.get("tags", "name")[0]
     assert osp.isfile(name), f"image not found, {name}"
-    assert len(item) == 12
+    assert len(item) == 11
 
     data = W.__getitem__()
     assert data is not None
 
     assert isinstance(data[0], torch.Tensor)
+
