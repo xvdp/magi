@@ -27,7 +27,7 @@ from .. import config
 
 #
 # resolve image handler backend
-def _resolve_backends(backend=None, img=None, dtype="float32", channels=3):
+def _image_backends(backend=None, img=None, dtype="float32", channels=3):
     backends = ["accimage", "PIL", "opencv"]
 
     if backend is not None and  backend != backends[0]  and backend in backends:
@@ -231,7 +231,7 @@ def open_img(img: str, out_type: str="numpy", dtype: str="float32", grad: bool=N
         cv2
     TODO replace print with logging
     """
-    _backends = _resolve_backends(backend=None, img=img, dtype=dtype, channels=channels)
+    _backends = _image_backends(backend=None, img=img, dtype=dtype, channels=channels)
     _assert_dtype(dtype, out_type)
     out = None
 

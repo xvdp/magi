@@ -100,7 +100,7 @@ class DataItem(ListDict):
         public keys (self.<key>)
         self.keys -> self.__dict__.keys(), key[0] != "_"
         self.__dict__[key] -> list
-        enforncing len(self.__dict__[key]) == self.__len__()
+        enforcing len(self.__dict__[key]) == self.__len__()
 
         private keys (self._<key>)
         self.private_keys ->  self.__dict__.keys(), key[0] == "_"
@@ -110,10 +110,10 @@ class DataItem(ListDict):
         .get(key, value) -> sub list of self items tagged with (key, value) pairs
         .to_torch(dtype, device, grad, [include=[]], [exclude=[]])
         .to(**kwargs) runs tensor.to(**kwargs) for all kwargs in data
-        .keep(key, values) # deletes all entries not in key values
+        .keep(key, values) # deletes all entries not in key values # keep(None) keeps everything
+        .deepcopy() # alias deepclone() tensors are cloned and
 
     ListDict methods:
-        .copy()
         .clear()
 
     list methods extended to handle keys:
@@ -124,6 +124,7 @@ class DataItem(ListDict):
         .pop(index)
         .reverse()
         .index()
+        .copy() # alias .clone(), all tensors are cloned
 
     list methods removed
         .sort() # instances in DataItem are not of same type generally.
@@ -151,7 +152,7 @@ class DataItem(ListDict):
         super().__init__(*args) # list
         self.__dict__.update(**kwargs) # dict, {key: list (len: args), ...}
 
-        _larg = len(*args)
+        _larg = 0 if not args else len(*args)
         _slen = len(self)
         for key in self.keys:
             _len = len(self.__dict__[key])
@@ -180,6 +181,7 @@ class DataItem(ListDict):
     def _assert_read_only(self, name):
         if name in [m[0] for m in getmembers(self)]:
             raise AttributeError(f"'ListDict' object attribute '{name}' is read-only")
+
 
     @property
     def keys(self) -> list:
@@ -251,45 +253,44 @@ class DataItem(ListDict):
         for i, _ in enumerate(self):
             if isinstance(self[i], torch.Tensor):
                 self[i] = self[i].to(**kwargs)
-    # def clone(self,  **kwargs):
 
     def keep(self, *args, **kwargs) -> None:
         """ Removes all public keys and items not tagged to keep
         overloads: indices or key,value pairs
-            .keep(key:str, value(s): Union[str, list])
-            .keep(indice(s): Union[int, list])
+            .keep(<key>=[<value>]) #<key> in self.keys
+            .keep([list of indices]) 
         """
-        _argl = len(args) + len(kwargs)
-        if _argl == 2:
-            self._keep_by_keyvals(*args, **kwargs)
-        elif _argl == 1:
-            self._keep_by_index(*args, **kwargs)
+        if args and args[0] is not None and is_int_iterable(*args):
+            self._keep_by_index(*args)
+
+        elif kwargs:
+            if "index" in kwargs and is_int_iterable(kwargs["index"]):
+                self._keep_by_index(kwargs["index"])
+            else:
+                self._keep_by_keyvals(**kwargs)
 
     # @overload # not available outside stub files
-    def _keep_by_index(self, index: Union[int, list, tuple]) -> None:
+    def _keep_by_index(self, *args) -> None:
         """ """
-        assert isinstance(index, (int, list, tuple))
-        if isinstance(index, int):
-            index = [index]
-        index = self._positive_indices(index)
-
-        _remove = [i for i in range(len(self)) if i not in index]
+        indices = flatlist(args, unique=True)
+        indices = self._positive_indices(indices)
+        _remove = [i for i in range(len(self)) if i not in indices]
         _remove.reverse()
         for i in _remove:
             del self[i]
 
     # @overload
-    def _keep_by_keyvals(self, key: str, vals: Union[str, list]) -> None:
+    def _keep_by_keyvals(self, **kwargs) -> None:
         """ """
-        assert isinstance(key, str) and key in self.keys, f"key '{key}' not found in {self.keys}"
-        assert isinstance(vals, (str, list, tuple))
-        if isinstance(vals, str):
-            vals = [vals]
-        out = []
-        for val in vals:
-            out +=  [i for i in range(len(self.__dict__[key])) if self.__dict__[key][i] == val]
-        if out:
-            self._keep_by_index(out)
+        _kwargs = {key:kwargs[key] for key in kwargs if key in self.keys}
+        index = []
+        for key in _kwargs:
+            if not isinstance(_kwargs[key], (list, tuple)):
+                _kwargs[key] = [_kwargs[key]]
+            for val in _kwargs[key]:
+                index.extend([i for i in range(len(self.__dict__[key])) if self.__dict__[key][i] == val])
+        if index:
+            self._keep_by_index(index)
 
     def _positive_indices(self, index):
         return [i%len(self) for i in index]
@@ -334,6 +335,7 @@ class DataItem(ListDict):
             else:
                 outlist.append(deepcopy(item))
         return DataItem(outlist, **deepcopy(self.__dict__))
+    clone = copy
 
     def deepcopy(self) -> Any:
         """ Returns a deep copy of DataItem
@@ -347,7 +349,7 @@ class DataItem(ListDict):
                 outlist.append(deepcopy(item))
         return DataItem(outlist, **deepcopy(self.__dict__))
     deepclone = deepcopy
-
+    
     def extend(self, iterable: Iterable[_T], **kwargs) -> None:
         """ Extend to self and to lists for each public key, requires entries for each key
         Example
@@ -386,6 +388,39 @@ class DataItem(ListDict):
     def sort(self) -> None:
         """ Not Implemented"""
         raise NotImplementedError("DataItem() is not sortable")
+
+
+# list utils
+
+def is_int_iterable(*args) -> bool:
+    """ Returns True if args is either int or a list, tuple or set containing ints
+    """
+    _iterable = (list, tuple, set)
+    return all([isinstance(arg, int) or (isinstance(arg, _iterable) and all([isinstance(item, int)
+            for item in arg])) for arg in args])
+
+def flatlist(*args, sort=False, unique=False):
+    """ flattens a list recursively
+    """
+    _arrays = (torch.Tensor, np.ndarray)
+    _iterable = (list, tuple, set)
+    out = []
+    for arg in args:
+        if isinstance(arg, _arrays):
+            out.extend(arg.reshape(-1).tolist())
+        elif isinstance(arg, (list, set, tuple)):
+            if any([isinstance(x, _iterable) for x in arg]):
+                arg = flatlist(*arg)
+            out.extend(arg)
+        else:
+            out.append(arg)
+    if unique:
+        out = sorted(list(set(out)))
+    if sort:
+        out.sort()
+    return out
+
+
 
 # class DataFeature(DataItem):
 #     """DataItem with required keys:

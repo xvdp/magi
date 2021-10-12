@@ -2,35 +2,54 @@
 wrapper to wider dataset with face annotations
 
 """
+from typing import Union
 import os.path as osp
 import numpy as np
 import torch
-from ..containers import DataItem
 from .datasets import MDataset
+from ..containers import DataItem
+
 
 # pylint: disable=no-member
 class WIDER(MDataset):
-    """
-    W = WIDER("/media/z/Elements1/data/Face/WIDER")
+    """ Wider Dataset (from http://shuoyang1213.me/WIDERFACE/)
+    Annotated faces on crowds on a rangeof 20 activities.
 
-    from http://shuoyang1213.me/WIDERFACE/
+    ..info
     download wider_face_split.zip, WIDER_train, WIDER_test, WIDER_val
     uncompress to a root folder e.g. WIDER
     WIDER/
         wider_face_split/
+            ## annotations for train and val images, format, e.g.
+                9--Press_Conference/9_Press_Conference_Press_Conference_9_129.jpg # filename
+                2                           # number of faces
+                336 242 152 202 0 0 0 0 0 0 # x y w h blur expression illumination invalid occlusion pose
+                712 278 126 152 0 0 0 0 0 0 # ...
         WIDER_train/
-        WIDER_test/
         WIDER_val/
+        WIDER_test/ # image without annotations
 
+    ..usage
+    >>> W = WIDER(data_root="/media/z/Elements1/data/Face/WIDER")
+    >>> W.__getitem__([index]) -> returns magi.features.DataItem()
+
+
+    >>> W.set_filters()
     """
     def __init__(self, data_root:str, mode: str="train", dtype: str="float32", device: str="cpu",
-                 torchvision_transforms=None, **kwargs) -> None:
+                 torch_transforms=None, filters: dict=None, **kwargs) -> None:
         """ Args
-            data_root   str path where data was unzipped
-            mode        str [train] | val | test
+            data_root   (str) path where dset was uncompressed
+            mode        (str [train]) | val | test
+            dtype       (str [float32])
+            device      (str [cpu]) | cuda
+            filters     (list [None]) if None __getitem__() returns all tags
+                if filters is passed, {"tags":['image', 'bbox']} and any tags in filters= returned
+                in ['name', 'blur', 'expression', 'illumination', 'invalid', 'occlusion', 'pose',
+                    'activity', 'wider_id',  'wordnet_id', 'wordnet_face_id']
         """
         super().__init__(dtype=dtype, device=device, inplace=True, grad=False, channels=3,
-                         torchvision_transforms=torchvision_transforms)
+                         torch_transforms=torch_transforms)
 
         self.data_root = data_root
         assert osp.isdir(data_root), f"cd {data_root} not found"
@@ -39,25 +58,34 @@ class WIDER(MDataset):
         self.dtype = dtype
         self.device = device
         self.load_dset(mode=mode)
+        self.filters = None
+        if filters is not None:
+            self.set_filters(**filters)
 
     def __getitem__(self, index:int=None) -> DataItem:
-        """Return item as DataItem
+        """Return item as DataItem()
+
+        .tags['image', 'bbox', 'name', 'blur', 'expression', 'illumination', 'invalid', 'occlusion',
+               'pose', 'activity', 'wider_id',  'wordnet_id', 'wordnet_face_id']
         """
         index = index if index is not None else torch.randint(3, (1,)).item()
         item =  self.images[index]
-
-        # convert all numpy, ints, and lists to torch
-        for i, _it in enumerate(item):
-            if isinstance(_it, (list, tuple, np.ndarray)):
-                item[i] = torch.as_tensor(item[i], device=self.device)
-
         image = self.open(item.get("meta", "path")[0])
         item.insert(0, image, meta="data_2d", tags="image")
-
+        if self.filters is not None:
+            item.keep(**self.filters)
+        item.to_torch(device=self.device)
         return item
 
     def __len__(self) -> int:
         return len(self.images)
+
+    def set_filters(self, **kwargs):
+        if kwargs:
+            self.filters = {"tags":["image", "bbox"]} # always return image nd bound box
+            self.filters.update({k:kwargs[k] for k in kwargs if k in ['tags', 'meta']})
+        else:
+            self.filters = None
 
     def load_dset(self, mode: str="train") -> None:
         """

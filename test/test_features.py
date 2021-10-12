@@ -3,8 +3,9 @@ tests to feature classes for dataloaders
 """
 import os
 import pytest
+import numpy as np
 import torch
-from magi.containers import DataItem, ListDict
+from magi.containers import DataItem, ListDict, flatlist
 
 # pylint: disable=no-member
 def test_listdict():
@@ -64,13 +65,23 @@ def test_dataitem():
     data.remove("johnson")
     assert len(data) == len(data.tags) == len(data.info)
 
+
+def _get_data_item():
+    tensor = torch.randn(1,3,45,45)
+    dic = {"a":0, "b":1, "c":2}
+    string = "inigomontoya"
+    ls = [12,12,12]
+    return DataItem([tensor, ls, dic, 12., 0, string],
+                    tags=["image", "list", "dict", "int", "float", "str"])
+
+
 def test_keep_by_name():
     tensor = torch.randn(1,3,45,45)
     dic = {"a":0, "b":1, "c":2}
     data = DataItem([tensor, [12,12,12], dic, 12., 0, "inigomontoya"],
                     tags=["image", "list", "dict", "int", "float", "str"])
 
-    data.keep("tags", ["image", "dict"])
+    data.keep(tags=["image", "dict"])
     assert len(data) == len(data.tags) == 2
     assert torch.all(torch.eq(data[0], tensor))
     assert data[1] == dic
@@ -87,6 +98,27 @@ def test_keep_by_index():
     assert len(data) == len(data.tags) == 2
     assert data[0] == ls
     assert data[1] == string
+
+def test_flatlist():
+
+    np_rg = np.arange(45,48,1, dtype="int")
+    torch_rn = torch.ones(10, dtype=torch.int)*50
+    nestlist = [[[10,11]]]
+    tup = (9,3,6)
+    out = flatlist(np_rg, torch_rn, tup, nestlist, 1,2,3)
+    assert len(out) == 21
+
+    out = flatlist(np_rg, torch_rn, tup, nestlist, 1,2,3, unique=True)
+    assert len(out) == 11
+
+
+def test_keep_none():
+    data = _get_data_item()
+
+    data.keep(None)
+    assert len(data) == len(data.tags) == 6
+    data.keep()
+    assert len(data) == len(data.tags) == 6
 
 
 def test_to_tensor_all():

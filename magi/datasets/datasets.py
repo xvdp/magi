@@ -11,12 +11,13 @@ from torch.utils.data.dataset import Dataset, IterableDataset
 
 
 class MDataset(Dataset[T_co]):
-    """ Similar to torch Dataset, with modification to use magi methods.
+    """ Similar to torch Dataset, with extensions to use magi methods.
     """
     def __init__(self, dtype="float32", device="cpu", inplace=True, grad=False, channels=3,
-                 torchvision_transforms=None):
+                 torch_transforms=None):
+
         self.open = Open(out_type="torch", dtype=dtype, device=device, grad=grad,
-                         inplace=inplace, channels=channels, transforms=torchvision_transforms,
+                         inplace=inplace, channels=channels, transforms=torch_transforms,
                          force_global=True)
 
 class AnnotatedDataset(Dataset[T_co]):
