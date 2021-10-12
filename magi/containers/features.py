@@ -87,7 +87,7 @@ class ListDict(list):
 
 class DataItem(ListDict):
     """ Generic Feature Datastructure.
-    Keeps data as list - matching
+    Keeps data as list, addresses in a dict
 
     Stricter version of ListDict requiring that public keys contain lists of same length as main list
         private keys may contain any data
@@ -98,20 +98,21 @@ class DataItem(ListDict):
             self._<key> -> Any                # private keys, logged with property, self.keys
 
         public keys (self.<key>)
-        self.keys -> self.__dict__.keys(), key[0] != "_"
-        self.__dict__[key] -> list
-        enforcing len(self.__dict__[key]) == self.__len__()
+            self.keys -> self.__dict__.keys(), key[0] != "_"
+            self.__dict__[key] -> list
+            # enforcing len(self.__dict__[key]) == self.__len__()
 
         private keys (self._<key>)
-        self.private_keys ->  self.__dict__.keys(), key[0] == "_"
-        lenght property self._<key> not enforced
+            self.private_keys ->  self.__dict__.keys(), key[0] == "_"
+            # length property self._<key> not enforced
 
     DataItem methods:
         .get(key, value) -> sub list of self items tagged with (key, value) pairs
         .to_torch(dtype, device, grad, [include=[]], [exclude=[]])
         .to(**kwargs) runs tensor.to(**kwargs) for all kwargs in data
-        .keep(key, values) # deletes all entries not in key values # keep(None) keeps everything
-        .deepcopy() # alias deepclone() tensors are cloned and
+        .keep(**kwargs) # deletes all entries not in key values # keep(None) keeps everything
+        .keep(*args)    # deletes all in indices
+        .deepcopy()     # alias deepclone() tensors are cloned and
 
     ListDict methods:
         .clear()
@@ -134,20 +135,43 @@ class DataItem(ListDict):
         Args
             *args       -> list(*args)
             **kwargs    -> {k0:list, k1:list, ...}
-        Example
-            d = ListDict([torch.randn([1,3,224,224]), 2, 1], tags=['image', 'image_id', 'class_id'])
-            d.keys  # -> ['tags']
-            d       # -> [torch.Tensor[....], 2, 1]
+        Examples
+            >>> d = ListDict([torch.randn([1,3,224,224]), 2, 1], tags=['image', 'image_id', 'class_id'])
+            >>> d.keys  # -> ['tags']
+            >>> d       # -> [torch.Tensor[....], 2, 1]
 
             # add new key, filling every element of list with some info
-            d.meta  # ['image.source...', 'id in dataset', 'class in wordnet']
-            d.keys  # -> ['tags', 'meta']
+            >>> d.meta  # ['image.source...', 'id in dataset', 'class in wordnet']
+            >>> d.keys  # -> ['tags', 'meta']
 
             # append new datum, assigning a value to every key
-            d.append([[0,100,200,200]], tags='position', meta='made up foo')
-            d       # -> [torch.Tensor[....], 2, 1, [[0,100,200,200]]]
-            d.tags  # -> ['image', 'image_id', 'class_id', 'position']
-            d.meta  # -> ['image.source...', 'id in dataset', 'class in wordnet', 'made up foo']
+            >>> d.append([[0,100,200,200]], tags='position', meta='made up foo')
+            >>> d       # -> [torch.Tensor[....], 2, 1, [[0,100,200,200]]]
+            >>> d.tags  # -> ['image', 'image_id', 'class_id', 'position']
+            >>> d.meta  # -> ['image.source...', 'id in dataset', 'class in wordnet', 'made up foo']
+
+            # access elements with key, value:
+            >>> d.get('tags', 'position') -> [ [[0,100,200,200]] ]
+            >>> d.get('meta', 'made up foo') -> [ [[0,100,200,200]] ]
+
+            # clone (item.copy() and item.clone(()) or deepclone (deepcopy(item) and item.clone().detach())
+            >>> e = d.deepclone()
+            >>> f = d.clone()
+
+            # remove all elements except selected in keep, by index
+            >>> e.keep(0,1) # or e.keep([0,1]) 
+            >>> e       # -> [torch.Tensor[....], 2]      # list removed indices not in 0,1
+            >>> e.tags  # -> ['image', 'image_id']   # idem for all keys
+
+            # remove all elements except selected in keep, by keyvalue
+            >>> f.keep(meta=['class in wordnet', 'made up foo']) ->
+            >>> f       # -> [1, [[0,100,200,200]] ]  
+
+            # convert to torch
+            >>> d.to_torch(dtype="float64", device="cuda") # dtype can be list or included as a key
+
+            # remove keys, cast as list
+            >>> list(d)
         """
         super().__init__(*args) # list
         self.__dict__.update(**kwargs) # dict, {key: list (len: args), ...}
@@ -182,7 +206,6 @@ class DataItem(ListDict):
         if name in [m[0] for m in getmembers(self)]:
             raise AttributeError(f"'ListDict' object attribute '{name}' is read-only")
 
-
     @property
     def keys(self) -> list:
         """ Returns all public keys as a list
@@ -208,29 +231,29 @@ class DataItem(ListDict):
                  grad: bool=False, include: Union[list, tuple]=None, exclude: Union[list, tuple]=None, **kwargs):
         """ converts all numeric list items to torch
         Args
-            dtype       (str, torch.dtype, list [None]) | defaults to self.__dict__['dtype'] if present
+            dtype       (str, torch.dtype, list [None]) | .__dict__['dtype'] if 'dtype' in .__dict__
             device      (str, torch.device ['cpu'])
             grad        [False]
 
             include   list of indices to convert to torch, if None, all
             exclude   list of indices to keep not as torch
             **kwargs    any valid for torch.as_tensor(**kwargs)
-                and
         """
-        # filter indices
-        include = self._positive_indices(include) if include is not None else range(len(self))
-        if exclude is not None:
-            include = [i for i in include if i not in self._positive_indices(exclude)]
-
+        exclude = exclude if exclude is not None else []
         # fix dtype
         # dtype assigned in DataItem key "dtype"
         if dtype is None and "dtype" in self.__dict__:
             dtype = self.__dict__['dtype']
+            exclude += [i for i in range(len(dtype)) if dtype[i] not in torch.__dict__]
         # convert to list
         elif dtype is None or isinstance(dtype, (str, torch.dtype)):
             dtype = [dtype for i in range(len(self))]
         # ensure dtype is valid torch.dtype
         dtype = torch_dtype(dtype)
+
+        # filter indices
+        include = self._positive_indices(include) if include is not None else range(len(self))
+        include = [i for i in include if i not in self._positive_indices(exclude)]
 
         for i in include:
             if isinstance(self[i], (int, float)):
