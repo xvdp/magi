@@ -1,4 +1,7 @@
-"""@ xvdp"""
+"""@ xvdp
+functional for  transforms.__type__ = "IO"
+
+"""
 from typing import Any, Union
 import os.path as osp
 from urllib.parse import urlparse

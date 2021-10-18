@@ -14,14 +14,17 @@ Annotation Tensor Lists will be transformed by Affine
 
 
 """
-from typing import Union, NoReturn
+from typing import Any, Union
 import logging
+import torch
+import torchvision.transforms as TT
 from koreto import Col
 from ._transforms import Transform, TransformAppearance
 from . import functional_io as Fio
 from .. import config
 from ..utils import warn_grad_inplace, warn_np_dtypes
 
+# pylint: disable=no-member
 #
 # IO Transforms
 #
@@ -50,8 +53,9 @@ class Open(Transform):
         Tensor, float32, NCHW, 3 channles, no_grad, cpu
     """
     __type__ = "IO"
-    def __init__(self, dtype=None, device="cpu", grad=False, inplace=None, out_type="torch",
-                 channels=3, transforms=None, force_global=False):
+    def __init__(self, dtype: Union[str, torch.dtype]=None, device: str="cpu", grad: bool=False,
+                 inplace: bool=None, out_type: str="torch", channels: int=3, transforms: TT=None,
+                 force_global: bool=False) -> Any:
 
         # out_type can only be set on __init__
         self.out_type = out_type if out_type in ("torch", "numpy") else "torch"
@@ -66,7 +70,7 @@ class Open(Transform):
             self.grad = grad
             warn_grad_inplace(inplace, grad, in_config=True)
 
-    def __call__(self, name, **kwargs):
+    def __call__(self, name: Union[str, list, tuple], **kwargs):
         """
         Args:
             name        (str, list),  valid file name(s)

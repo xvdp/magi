@@ -1,10 +1,11 @@
 """@xvdp
 standard torch checks and and ducktape
 """
-from typing import Union, Any
+from typing import Union
 import torch
+import numpy as np
 
-    # pylint: disable=no-member
+# pylint: disable=no-member
 def torch_dtype(dtype: Union[str, torch.dtype, list, tuple], force_default: bool=False, fault_tolerant: bool=True) -> Union[torch.dtype, list]:
     """ Returns torch.dtype, None, torch.det_default_dtype() or list of dtypes
     Args:
@@ -38,3 +39,22 @@ def torch_dtype(dtype: Union[str, torch.dtype, list, tuple], force_default: bool
         else:
             raise NotImplementedError(f"dtype {dtype} not recognized")
     return dtype
+
+def dtype_as_str(dtype: Union[str, torch.dtype, np.dtype])-> str:
+    """ convert torch or numpy dtype to str
+    """
+    _torch_dtypes = ['uint8', 'int8', 'int16', 'short', 'int32', 'int', 'int64', 'long', 'float16', 'half',
+                     'float32', 'float', 'float64', 'double', 'complex32', 'complex64', 'cfloat', 'complex128',
+                     'cdouble', 'bool', 'qint8', 'quint8', 'qint32', 'bfloat16', 'quint4x2']
+    if isinstance(dtype, str) and dtype in _torch_dtypes:
+        return dtype
+
+    if isinstance(dtype, torch.dtype):
+        return dtype.__repr__().split('.')[-1]
+
+    if isinstance(dtype, np.dtype): # np dtypes
+       return dtype.name
+    if hasattr(dtype, '__name__'):
+        return (dtype.__name__)
+
+    return ValueError(f"dtype( {dtype} does not correspond to a valid dtype")

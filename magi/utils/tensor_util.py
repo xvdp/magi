@@ -118,20 +118,22 @@ def check_tensor(data, dtype=None, device=None, grad=None):
     assert_tensor_grad(data, grad)
     return size
 
-class TensorList(list):
-    """ List / Dictionary Composite To handle batches
 
-    """
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args)
-        for k in kwargs:
-            self.__dict__[k] = kwargs[k]
 
-    def __setattr__(self, name: str, value: Any) -> None:
-        return super().__setattr__(name, value)
+# class TensorList(list):
+#     """ List / Dictionary Composite To handle batches
 
-    def __types__(self):
-        return [type(item) for item in self]
+#     """
+#     def __init__(self, *args, **kwargs):
+#         super().__init__(*args)
+#         for k in kwargs:
+#             self.__dict__[k] = kwargs[k]
+
+#     def __setattr__(self, name: str, value: Any) -> None:
+#         return super().__setattr__(name, value)
+
+#     def __types__(self):
+#         return [type(item) for item in self]
 
 
 def assert_tensor_list_eq(tensor_list, tolerant=False):

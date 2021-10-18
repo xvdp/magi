@@ -25,7 +25,8 @@ def test_torch_dtype():
     assert dtype[4] == torch.int32
     assert dtype[5] == torch.int64
 
-@pytest.mark.xfail
+@pytest.mark.xfail(reason="dtype passes")
 def test_torch_dtype_fail():
-    dtype = torch_dtype("int34")
-    assert dtype is None or isinstance(dtype, torch.dtype)
+    _invalid = "int34"
+    dtype = torch_dtype(_invalid)
+    assert dtype is not None, f"dtype should be none with invalid dtype {_invalid}, got {dtype}"

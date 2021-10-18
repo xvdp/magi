@@ -1,10 +1,10 @@
 """@xvdp
-Features
+Features:
 
-DataItem is intentded as compromise between:
-    simple untagged approach to data items use in torch
-    and the dictionary based features of tensorflow
-    ref. https://github.com/tensorflow/datasets/tree/v4.4.0/tensorflow_datasets/core/features
+Item is intentded as compromise between:
+    simplicity of untagged lists to data items commonly used in torch datasets
+    precision of dict features on tensorflow
+e.g. ref. https://github.com/tensorflow/datasets/tree/v4.4.0/tensorflow_datasets/core/features
 
 dataset.__getitem__() can output a plain ListDict without tags as canonical ImageNet e.g.
     [image_tensor, class_id]
@@ -13,7 +13,7 @@ dataset.__getitem__() can output a plain ListDict without tags as canonical Imag
 
 ListDict() has no requirements, at its simplest is a list, or a list with dictionary, 
 
-DataItem is a ListDict with keys which contents are lists  which if filled by datasets can inform dataloader collate_fn
+Item is a ListDict with keys which contents are lists  which if filled by datasets can inform dataloader collate_fn
     collate_fn, see .dataloader
     .tags()
 
@@ -23,8 +23,8 @@ from inspect import getmembers
 from copy import deepcopy
 import numpy as np
 import torch
-from torch._C import Value
 from ..utils import torch_dtype
+from .list_util import is_int_iterable, list_flatten, list_modulo
 
 _T = TypeVar('_T')
 
@@ -50,7 +50,7 @@ class ListDict(list):
     def __setattr__(self, name: str, value: Any) -> None:
         return super().__setattr__(name, value)
 
-    def __types__(self):
+    def __types__(self) -> list:
         """ return a list of types for the DictLIST
         """
         return [type(item) for item in self]
@@ -85,7 +85,7 @@ class ListDict(list):
                 return i
         raise ValueError(f"{value} is not in list")
 
-class DataItem(ListDict):
+class Item(ListDict):
     """ Generic Feature Datastructure.
     Keeps data as list, addresses in a dict
 
@@ -112,7 +112,7 @@ class DataItem(ListDict):
             self.private_keys ->  self.__dict__.keys(), key[0] == "_"
             # length property self._<key> not enforced
 
-    DataItem methods:
+    Item methods:
         .get(key, value) -> sub list of self items tagged with (key, value) pairs
         .to_torch(dtype, device, grad, [include=[]], [exclude=[]])
         .to(**kwargs) runs tensor.to(**kwargs) for all kwargs in data
@@ -134,7 +134,7 @@ class DataItem(ListDict):
         .copy() | .clone() # data is copied tensors are cloned
 
     list methods removed
-        .sort() # instances in DataItem are not of same type generally.
+        .sort() # instances in Item are not of same type generally.
     """
     def __init__(self, *args, **kwargs) -> None:
         """
@@ -142,7 +142,7 @@ class DataItem(ListDict):
             *args       -> list(*args)
             **kwargs    -> {k0:list, k1:list, ...}
         Examples
-            >>> d = ListDict([torch.randn([1,3,224,224]), 2, 1], tags=['image', 'image_id', 'class_id'])
+            >>> d = Item([torch.randn([1,3,224,224]), 2, 1], tags=['image', 'image_id', 'class_id'])
             >>> d.keys  # -> ['tags']
             >>> d       # -> [torch.Tensor[....], 2, 1]
 
@@ -165,13 +165,13 @@ class DataItem(ListDict):
             >>> f = d.clone()
 
             # remove all elements except selected in keep, by index
-            >>> e.keep(0,1) # or e.keep([0,1]) 
+            >>> e.keep(0,1) # or e.keep([0,1])
             >>> e       # -> [torch.Tensor[....], 2]      # list removed indices not in 0,1
             >>> e.tags  # -> ['image', 'image_id']   # idem for all keys
 
             # remove all elements except selected in keep, by keyvalue
             >>> f.keep(meta=['class in wordnet', 'made up foo']) ->
-            >>> f       # -> [1, [[0,100,200,200]] ]  
+            >>> f       # -> [1, [[0,100,200,200]] ]
 
             # convert to torch
             >>> d.to_torch(dtype="float64", device="cuda") # dtype can be list or included as a key
@@ -186,7 +186,7 @@ class DataItem(ListDict):
         _slen = len(self)
         for key in self.keys:
             _len = len(self.__dict__[key])
-            assert _len == _larg == _slen, f"len(DataItem.{key}:{_len}) should equal len(DataItem){_slen} and input args {_larg}"
+            assert _len == _larg == _slen, f"len(Item.{key}:{_len}) should equal len(Item){_slen} and input args {_larg}"
 
     def __setattr__(self, name: str, value: list) -> None:
         self._assert_read_only(name)
@@ -224,14 +224,19 @@ class DataItem(ListDict):
         """
         return [key for key in self.__dict__  if key[0] == "_"]
 
-    def get(self, key: str, val: str) -> list:
-        """ Returns sublist of self, tagged by (key, value) pairs
-        Example
-        if self has a 'tags' key, and self.tags has 'name' entries,
-        >>> self.get("tags", "name") -> [self[self.tags[i]] where self.tags[i] == "name"]
+    def get_indices(self, key: str, val: str) -> list:
+        """ Returns indices of elements tagged by (key, value) pairs
         """
         assert key in self.keys, f"key '{key}' not found in {self.keys}"
-        return [self[i] for i in range(len(self.__dict__[key])) if self.__dict__[key][i] == val]
+        return [i for i in range(len(self.__dict__[key])) if self.__dict__[key][i] == val]
+
+    def get(self, key: str, val: str) -> list:
+        """ Returns sublist of elements tagged by (key, value) pairs
+        Example
+        if self has a 'tags' key, and self.tags has 'name' entries,
+        >>> self.get("tags", "name") -> [items with .tags == 'name']
+        """
+        return [self[i] for i in self.get_indices(key, val)]
 
     def to_torch(self, dtype: Union[torch.dtype, list, tuple]=None, device: Union[torch.device, str]="cpu",
                  grad: bool=False, include: Union[list, tuple]=None, exclude: Union[list, tuple]=None, **kwargs):
@@ -248,7 +253,7 @@ class DataItem(ListDict):
         """
         exclude = exclude if exclude is not None else []
         # fix dtype
-        # dtype assigned in DataItem key "dtype"
+        # dtype assigned in Item key "dtype"
         if dtype is None and "dtype" in self.__dict__:
             dtype = self.__dict__['dtype']
             exclude += [i for i in range(len(dtype)) if dtype[i] not in torch.__dict__]
@@ -260,8 +265,8 @@ class DataItem(ListDict):
         dtype = torch_dtype(dtype, fault_tolerant=True)
 
         # filter indices
-        include = self._positive_indices(include) if include is not None else range(len(self))
-        include = [i for i in include if i not in self._positive_indices(exclude)]
+        include = sorted(list_modulo(include, len(self))) if include is not None else range(len(self))
+        include = [i for i in include if i not in list_modulo(exclude, len(self))]
 
         for i in include:
             if isinstance(self[i], (int, float)):
@@ -289,7 +294,8 @@ class DataItem(ListDict):
         """ Removes all public keys and items not tagged to keep
         overloads: indices or key,value pairs
             .keep(<key>=[<value>]) #<key> in self.keys
-            .keep([list of indices]) 
+            .keep([list of indices])
+        .. warning - can be slow if Item has large tensors
         """
         if args and args[0] is not None and is_int_iterable(*args):
             self._keep_by_index(*args)
@@ -303,8 +309,8 @@ class DataItem(ListDict):
     # @overload # not available outside stub files
     def _keep_by_index(self, *args) -> None:
         """ """
-        indices = flatlist(args, unique=True)
-        indices = self._positive_indices(indices)
+        indices = list_flatten(args, unique=True)
+        indices = list_modulo(indices, len(self))
         _remove = [i for i in range(len(self)) if i not in indices]
         _remove.reverse()
         for i in _remove:
@@ -319,15 +325,14 @@ class DataItem(ListDict):
             if not isinstance(_kwargs[key], (list, tuple)):
                 _kwargs[key] = [_kwargs[key]]
             for val in _kwargs[key]:
-                index.extend([i for i in range(len(self.__dict__[key])) if self.__dict__[key][i] == val])
+                index.extend([i for i in range(len(self.__dict__[key]))
+                              if self.__dict__[key][i] == val])
         if index:
             self._keep_by_index(index)
 
-    def _positive_indices(self, index):
-        return [i%len(self) for i in index]
-
     def _assert_values(self, **kwargs) -> None:
-        """ DataItem imposes no type on key values
+        """ Item imposes no type on key values
+        this ought to be implmenented with a metaclass
         """
         pass
 
@@ -356,7 +361,7 @@ class DataItem(ListDict):
             self.__dict__[key].append(val)
 
     def copy(self) -> Any:
-        """Returns a copy of DataItem
+        """Returns a copy of Item
         : seme as deepcopy or deepclone but does not detach tensors
         """
         outlist = []
@@ -365,11 +370,11 @@ class DataItem(ListDict):
                 outlist.append(item.clone())
             else:
                 outlist.append(deepcopy(item))
-        return DataItem(outlist, **deepcopy(self.__dict__))
+        return Item(outlist, **deepcopy(self.__dict__))
     clone = copy
 
     def deepcopy(self) -> Any:
-        """ Returns a deep copy of DataItem
+        """ Returns a deep copy of Item
         tensors, are clone().detached()
         """
         outlist = []
@@ -378,9 +383,9 @@ class DataItem(ListDict):
                 outlist.append(item.clone().detach())
             else:
                 outlist.append(deepcopy(item))
-        return DataItem(outlist, **deepcopy(self.__dict__))
+        return Item(outlist, **deepcopy(self.__dict__))
     deepclone = deepcopy
-    
+
     def extend(self, iterable: Iterable[_T], **kwargs) -> None:
         """ Extend to self and to lists for each public key, requires entries for each key
         Example
@@ -401,11 +406,11 @@ class DataItem(ListDict):
             self.__dict__[key].insert(index, val)
 
     def pop(self, index: int) -> _T:
-        """Remove and return DataItem at index (default last).
+        """Remove and return Item at index (default last).
         Raises IndexError if list is empty or index is out of range.
         """
         dict_component = {key:[self.__dict__[key].pop(index)] for key in self.keys}
-        return DataItem([super().pop(index)], **dict_component)
+        return Item([super().pop(index)], **dict_component)
 
     def remove(self, obj: _T) -> None:
         index = self.index(obj)
@@ -418,74 +423,28 @@ class DataItem(ListDict):
 
     def sort(self) -> None:
         """ Not Implemented"""
-        raise NotImplementedError("DataItem() is not sortable")
+        raise NotImplementedError("Item() is not sortable")
 
+    def new_like(self, data:list):
+        """ Creates new Item with same dict as current"""
+        if len(self.keys):
+            assert len(data) == len(self.__dict__[self.keys[0]])
+        return Item(data, **self.__dict__)
 
-# list utils
-
-def is_int_iterable(*args) -> bool:
-    """ Returns True if args is either int or a list, tuple or set containing ints
+def tolist(item: Any) -> list:
+    """ converts, casts or encapsulates items in lists
     """
-    _iterable = (list, tuple, set)
-    return all([isinstance(arg, int) or (isinstance(arg, _iterable) and all([isinstance(item, int)
-            for item in arg])) for arg in args])
+    if isinstance(item, list):
+        return item
+    if isinstance(item, (torch.Tensor, np.ndarray)):
+        return item.tolist()
+    if isinstance(item, (tuple, Item)):
+        return list(item)
+    return [item]
 
-def flatlist(*args, sort=False, unique=False):
-    """ flattens a list recursively
-    """
-    _arrays = (torch.Tensor, np.ndarray)
-    _iterable = (list, tuple, set)
-    out = []
-    for arg in args:
-        if isinstance(arg, _arrays):
-            out.extend(arg.reshape(-1).tolist())
-        elif isinstance(arg, (list, set, tuple)):
-            if any([isinstance(x, _iterable) for x in arg]):
-                arg = flatlist(*arg)
-            out.extend(arg)
-        else:
-            out.append(arg)
-    if unique:
-        out = sorted(list(set(out)))
-    if sort:
-        out.sort()
-    return out
-
-
-
-# class DataFeature(DataItem):
-#     """DataItem with required keys:
-#     tags    [Any, ...] # name of list entry
-#     meta    [str, ...] # type of list entry for
-#     """
-
-#     def __init__(self, *args, tags, meta, **kwargs):
-#         super().__init__(*args)
-#         #, tags, meta, **kwargs)
-#         self.__dict__.update(tags=tags, meta=meta, **kwargs) # dict, {key: list (len: args), ...}
-
-#         for key in self.keys:
-#             assert len(self.__dict__[key]) == len(*args), f"len(DataItem.{key}) should equal len(DataItem)"
-
-#         super()._assert_values = self._assert_values
-
-#     def _assert_values(self, meta, **kwargs) -> None:
-#         """ DataFeature requires that meta key of type.
-#         TODO extend to other data types
-#         maybe enum
-#         """
-#         _valid_meta = ['data1d', 'positions1d',
-#                       'data2d', 'positions2d',
-#                       'data3d', 'positions3d',
-#                       'path', 'attr_id', 'class_id', 'class_name']
-
-#         if not isinstance(meta, list): # to handle .extend
-#             meta = [meta]
-#         for m in meta:
-#             assert isinstance(meta, str) and meta in _valid_meta, f"meta requires str in {_valid_meta}"
 
 """
-from tensorflow datasets
+example features from tensorflow: wider
 
 FeaturesDict({
     'faces': Sequence({

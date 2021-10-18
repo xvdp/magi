@@ -6,13 +6,13 @@ from typing import Union
 import os.path as osp
 import numpy as np
 import torch
+from torchvision import transforms as TT
 from tqdm import tqdm
-from .datasets import MDataset
-from ..containers import DataItem
-
+from .datasets import DatasetM
+from ..features import Item
 
 # pylint: disable=no-member
-class WIDER(MDataset):
+class WIDER(DatasetM):
     """ Wider Dataset (from http://shuoyang1213.me/WIDERFACE/)
     Annotated faces on crowds on a rangeof 20 activities.
 
@@ -30,114 +30,142 @@ class WIDER(MDataset):
         WIDER_val/
         WIDER_test/ # image without annotations
 
+
     ..usage
     >>> W = WIDER(data_root="/media/z/Elements1/data/Face/WIDER")
-    >>> W.__getitem__([index]) -> returns magi.features.DataItem()
+    >>> W.__getitem__([index]) -> returns magi.features.Item()
 
 
-    >>> W.set_filters()
     """
-    def __init__(self, data_root:str, mode: str="train", dtype: str=None, device: str="cpu",
-                 torch_transforms=None, keep: list=None, **kwargs) -> None:
-        """ Args
+    def __init__(self, data_root :str, mode: str="train", tags: list=None, name: str="",
+                 dtype: str=None, device: str="cpu", inplace: bool=True, grad: bool=False,
+                 channels: int=3, transforms: TT=None, **kwargs) -> None:
+        """
+        Args
             data_root   (str) path where dset was uncompressed
             mode        (str [train]) | val | test
-            dtype       (str [float32])
-            device      (str [cpu]) | cuda
-            keep        (list [None]) if None __getitem__() returns all tags
-                ["image", "bbox", "name"] # are always kept
-                # if keep is passed, with any of tags below
-                ['blur','expression','illumination','invalid','occlusion','pose', "activity", "wider_id","wordnet_id", "wordnet_face_id"]
+
+            tags        (list [None]) if None __getitem__() returns all tags in self._tags dataset definition
+                if tags is not None, items will return tags ["bbox", "name"] on daset samples and ["image", "bbox"]
+                and any other specified in `tags=[]` arg available to WIDER dataset:
+        ['blur','expression','illumination','invalid','occlusion','pose', 'index', # WIDER per bbox attributes
+         'activity", 'wider_id', 'wordnet_id'] # folder name -> activity name, number, and wordnet noun
+
+        Args from DatasetMagi
+            name, dtype, device, inplace, grad, channels, transforms
+
         """
-        super().__init__(dtype=dtype, device=device, inplace=True, grad=False, channels=3,
-                         torch_transforms=torch_transforms)
+        super().__init__(name=name, dtype=dtype, device=device, inplace=inplace, grad=grad,
+                          channels=channels, transforms=transforms)
 
         self.data_root = data_root
-        assert osp.isdir(data_root), f"cd {data_root} not found"
+        assert osp.isdir(self.data_root), f"WIDER data_root '{self.data_root}' not found"
 
-        self.images = []
-        self.dtype = dtype if dtype is not None else torch.get_default_dtype()
-        self.device = device
-        self.keep = keep
+        self.samples = []
 
-        self.load_dset(mode=mode)
+        # dataset definition
+        # tags available to dataset
+        
+        self._tags = ['image', 'bbox', 'name',
+                      'blur', 'expression', 'illumination', 'invalid', 'occlusion', 'pose',
+                      'index', 'wider_activity', 'wider_id',  'wordnet_id']
 
-    def __getitem__(self, index:int=None) -> DataItem:
-        """Return item as DataItem()
+        self._meta = ['data_2d', 'positions_2d', 'path',
+                      'attr_id', 'attr_id', 'attr_id', 'attr_id', 'attr_id', 'attr_id',
+                      'image_id', 'class_name', 'class_id', 'class_id']
 
-        .tags['image', 'bbox', 'name', 'blur', 'expression', 'illumination', 'invalid', 'occlusion',
-               'pose', 'activity', 'wider_id',  'wordnet_id', 'wordnet_face_id']
+        self._dtype = [self.dtype, self.dtype, "str",
+                       'uint8', 'bool', 'bool', 'bool', 'uint8', 'bool',
+                       'int', 'str', 'uint8', 'int']
+
+        self.tags = self._filter_tags(tags)
+        self._make_dataset(mode=mode)
+
+    def __getitem__(self, index:int=None) -> Item:
+        """Return item as Item()
         """
-        index = index if index is not None else torch.randint(3, (1,)).item()
-        item =  self.images[index].copy()
-        image = self.open(item.get("meta", "path")[0], dtype=self.dtype)
+        index = index if index is not None else torch.randint(len(self), (1,)).item()
+        item =  self.samples[index].deepcopy()
+
+        path_idx = item.get_indices("meta", "path")[0]
+        path_name = item[path_idx] if self.tags is None or "name" in self.tags else item.pop(path_idx)
+        image = self.open(path_name) # open dtype, device and torch transforms from parent class
         item.insert(0, image, meta="data_2d", tags="image", dtype=self.dtype)
         item.to_torch(device=self.device)
-
-        ## TODO - add transforms?
+    
         return item
 
     def __len__(self) -> int:
-        return len(self.images)
+        return len(self.samples)
 
-    def set_keep(self, *args):
-        if not len(args) or args[0] is None:
-            self.keep = None
-        self.keep = list(set(["image", "bbox", "name"]  + args))
-
-    def load_dset(self, mode: str="train") -> None:
+    def _filter_tags(self, tags):
+        """ tags .tags[]
         """
-        .load_dset(mode=<'train' | 'val' | 'test'>)
+        if tags is not None:
+            tags = tags if isinstance(tags, list) else [tags]
+        return tags
+
+    def _make_dataset(self, mode: str="train") -> None:
+        """ .load_dset(mode=<'train' | 'val' | 'test'>)
         """
         _modes = ("train", "val", "test")
         assert mode in _modes, f"invalid mode '{mode}'; select from {_modes}"
 
         # validate paths: images
         image_folder = osp.join(self.data_root, f"WIDER_{mode}", "images")
+        assert osp.isdir(image_folder), f"images not found in '{image_folder}'..., download images and unzip"
 
         # validate paths: annotations
-        image_list_file = osp.join(self.data_root, "wider_face_split")
-        if mode == "test":
-            image_list_file = osp.join(image_list_file, "wider_face_test_filelist.txt")
-        else:
-            image_list_file = osp.join(image_list_file, f"wider_face_{mode}_bbx_gt.txt")
-
-        assert osp.isdir(image_folder), f"images not found in '{image_folder}'..., download images and unzip"
+        _name = "wider_face_test_filelist.txt" if mode == "test" else f"wider_face_{mode}_bbx_gt.txt"
+        image_list_file = osp.join(self.data_root, "wider_face_split", _name)
         assert osp.isfile(image_list_file), f"annotations not found in '{image_list_file}'..., download and unzip"
 
-        # read annotations to DataItem list
-        self.images = self.read_annotations(image_list_file, image_folder, mode=mode)
+        # read annotations to Item list
+        self.samples = self._read_annotations(image_list_file, image_folder)
 
-
-    def read_annotations(self, image_list_file: list, folder: str, mode: str="train") -> list:
-        """ returns list of DataItem
+    def _read_annotations(self, image_list_file: list, folder: str) -> list:
+        """ returns list of Item
             Bounding Boxes are grouped per image for augmentation purposes [N, 2,2] in format x,y,w,h
 
         with keys for entries
-            .tags   entry name: image, bbox, name, attributes, activity, wider_id, wordnet_id, wordnet_face_id
+            .tags   entry name: image, bbox, name, *attributes, activity, wider_id, wordnet_id
             .meta   entry type: data_2d, position_2d, path, *[attr_id]*6, class_name, *[class_id]*3
             .dtype  entry dtype: self.dtype, self.dtype, str, int, str, uint8, int, int, int
-
 
         class_id includes both WIDER class_id, and Wordnet class_id
             eg, in 9--Parade, class_name = "Parade", wider_id = 9, wordnet_id = 8428485
         if annotation file not found, download and place in path
-    
+
         # with open(osp.join(self.paths['annotations'], f"readme.txt"), 'r') as _fi:
         #     dset_tags = _fi.read().split("\n")[-1].split(", ")
-        # dset_tags = ['x1', 'y1', 'w', 'h', 'blur', 'expression', 'illumination', 'invalid',
+        # attrs = ['x1', 'y1', 'w', 'h', 'blur', 'expression', 'illumination', 'invalid',
         #         'occlusion', 'pose']
         # ['x1', 'y1', 'w', 'h'] -> bbox
         # ['blur', 'expression', 'illumination', 'invalid', 'occlusion', 'pose'] -> attributes
 
         """
-
         # read image list
         with open(image_list_file, 'r') as _fi:
             text = _fi.read().split("\n")
 
         images = []
         i = 0
+
+        # sample tags
+        tags = self._tags[1:]
+        meta = self._meta[1:]
+        dtype = self._dtype[1:]
+
+        _keep_indices = None
+        if self.tags is not None:
+            _immutable_tags = ["bbox", "name"]
+            _keep_indices = [i for i in range(len(tags)) if tags[i] in self.tags + _immutable_tags]
+            tags = [tags[i] for i in _keep_indices]
+            meta = [meta[i] for i in _keep_indices]
+            dtype = [dtype[i] for i in _keep_indices]
+
+        attrnames = self._tags[3:9]
+
         while i < len(text) - 1:
             line = text[i]
             if not line:
@@ -146,11 +174,12 @@ class WIDER(MDataset):
 
             # class from filename
             class_name = osp.basename(osp.dirname(line))
-            wordnet_id = self._wnid_dict(class_name)   # wordnet_id e.g. 7144834
+            wordnet_id = self._wnid_dict(class_name)[0]  # wordnet_id e.g. 7144834
             class_name = class_name.split("--")
-            assert (class_name[0].strip()).isnumeric(), f"fails <{class_name}> is notnumeric!, at line {i}"
+            assert (class_name[0].strip()).isnumeric(), f"<{class_name}> is not numeric!, line {i}"
             class_id = int(class_name[0])               # class_id # e.g. 9
             class_name = "--".join(class_name[1:])      # class_name # e.g. Press_Conference
+            values = [len(images), class_name, class_id, wordnet_id]
 
             # filename
             name = osp.join(folder, line)
@@ -158,124 +187,36 @@ class WIDER(MDataset):
 
             # bboxes and attributes
             num_faces = text[i]
+
             if num_faces.strip().isnumeric():
                 num_faces = int(num_faces)
                 i += 1
 
                 bbox = []
                 attributes = []
-                for j in range(num_faces):
-                    face= np.fromstring(text[i], dtype="int", sep=" ")
+                for _ in range(num_faces):
+                    face = np.fromstring(text[i], dtype="int", sep=" ")
                     bbox.append(face[:4])
                     attributes.append(face[4:])
                     i += 1
 
                 bbox = np.stack(bbox, axis=0).reshape(-1,2,2)
                 attributes = np.stack(attributes, axis=0)
-                attrnames = ['blur','expression','illumination','invalid','occlusion','pose']
                 attrs = {attrnames[i]:attributes[:,i] for i in range(len(attrnames))}
+                values = [bbox, name, *attrs.values()] + values
+                if _keep_indices is not None:
+                    values = [values[i] for i in _keep_indices]
 
-                images.append(DataItem([bbox, name, *attrs.values(), class_name, class_id, wordnet_id],
-                                        tags=["bbox", "name", *["attr_id"]*len(attrnames), "class_name", "class_id", "wordnet_id"],
-                                        meta=["positions_2d", "path", *attrs.keys(), "str", "int", "int"],
-                                        dtype=["float32", "str", 'uint8', 'bool', 'bool', 'bool', 'uint8', 'bool', "str", "uint8", "int"]
-                                        )
-                            )
             else: # images without bboxes
-                images.append(DataItem([name], tags=["name"], meta=["path"], dtype=["str"]))
+                values = [name] + values
+                idcs = [i for i in range(len(tags)) if tags[i] not in ["bbox"]+attrnames]
+                if not len(images):
+                    tags = [tags[i] for i in idcs]
+                    meta = [meta[i] for i in idcs]
+                    dtype = [dtype[i] for i in idcs]
+
+            images.append(Item(values, tags=tags, meta=meta, dtype=dtype))
         return images
-
-
-
-    # def _read_annotations(self, image_list_file: list, folder: str, mode: str="train") -> list:
-    #     """ returns list of DataItem
-    #         Bounding Boxes are grouped per image for augmentation purposes [N, 2,2] in format x,y,w,h
-
-    #     with keys for entries
-    #         .tags   entry name: image, bbox, name, blur, expression, illumination, invalid, occlusion, pose, activity, wider_id, wordnet_id, wordnet_face_id
-    #         .meta   entry type: data_2d, position_2d, path, *[attr_id]*6, class_name, *[class_id]*3
-    #         .dtype  entry dtype: self.dtype, self.dtype, str, uint8, bool, bool, bool, uint8, bool, str, uint8, int, int, int
-
-    #     class_id includes both WIDER class_id, and Wordnet class_id
-    #         eg, in 9--Parade, class_name = "Parade", wider_id = 9, wordnet_id = 8428485
-    #     if annotation file not found, download and place in path
-    #     """
-    #     # with open(osp.join(self.paths['annotations'], f"readme.txt"), 'r') as _fi:
-    #     #     dset_tags = _fi.read().split("\n")[-1].split(", ")
-    #     # dset_tags = ['x1', 'y1', 'w', 'h', 'blur', 'expression', 'illumination', 'invalid',
-    #     #         'occlusion', 'pose']
-
-    #     # read image list
-    #     with open(image_list_file, 'r') as _fi:
-    #         text = _fi.read().split("\n")
-    #         ## train and val images, format, e.g.
-    #         # 9--Press_Conference/9_Press_Conference_Press_Conference_9_129.jpg
-    #         # 2
-    #         # 336 242 152 202 0 0 0 0 0 0
-    #         # 712 278 126 152 0 0 0 0 0 0
-
-    #     images = []
-    #     _wn_face = self._wnid_dict('Face')
-
-    #     lno = 0
-    #     itno = 1
-    #     print(f"Reading, {image_list_file} with {len(text)} entries" )
-
-    #     while len(text):
-    #         name = text.pop(0); lno +=1
-    #         if not name:
-    #             continue
-    #         name = osp.join(folder, name)               # image path
-    #         if not osp.isfile(name):
-    #             print(f"image not found '{name}'', skipping ...")
-    #             continue
-
-    #         # class, activity category from folder
-    #         class_name = osp.basename(osp.dirname(name))
-    #         wordnet_id = self._wnid_dict(class_name)   # wordnet_id e.g. 7144834
-    #         class_name = class_name.split("--")
-    #         class_id = int(class_name[0])               # class_id # e.g. 9
-    #         class_name = "--".join(class_name[1:])      # class_name # e.g. Press_Conference
-
-    #         attributes = {t:[] for t in ['blur','expression','illumination','invalid','occlusion','pose']}
-    
-    #         # test files contain no bbox annotations, skip
-    #         if mode not in "test" and text[0].strip().isnumeric():
-    #             _num_faces = int(text.pop(0).strip()); lno +=1
-
-    #             bboxes = []
-    #             for _ in range(_num_faces):
-    #                 this_box = np.fromstring(text.pop(0), dtype=self.dtype, sep=" "); lno +=1
-    #                 bboxes.append(this_box[:4].reshape(2,2))
-    #                 attrs = this_box[4:].astype(self.dtype)
-
-    #                 for k, tag in enumerate(attributes):
-    #                     attributes[tag].append(attrs[k])
-    #             bboxes = np.stack(bboxes, axis=0)
-
-    #             _items = [bboxes, name, *attributes.values(), class_name, class_id, wordnet_id[0], _wn_face]
-    #             tags = ["bbox", "name", *attributes.keys(), "activity", "wider_id","wordnet_id", "wordnet_face_id"]
-    #             meta = ["position_2d", "path", *["attr_id" for _a in range(len(attributes))], "class_name", "class_id", "class_id", "class_id"]
-    #             dtype = [self.dtype, "str", 'uint8', 'bool', 'bool', 'bool', 'uint8', 'bool', "str", "uint8", "int", "int"]
-
-    #             # prefilter on load.
-    #             # alternatively everything could be loaded, and filtered on __getitem__() with DataItem.keep
-    #             if self.keep is not None:
-    #                 _keepidx = [i for i in range(len(tags[i])) if tags[i] in self.keep]
-    #                 _items = [_items[i] for i in _keepidx]
-    #                 tags = [tags[i] for i in _keepidx]
-    #                 meta = [meta[i] for i in _keepidx]
-    #                 dtype = [dtype[i] for i in _keepidx]
-
-    #             itno += 1
-    #             print(f"lines ->{lno}, Dataitem_{itno}")
-
-    #             item = DataItem(_items, tags=tags, meta=meta, dtype=dtype)
-    #             images.append(item)
-    #         else:
-    #             item = DataItem([name], tags=["name"], meta=["path"])
-    #     return images
-
 
     @staticmethod
     def _wnid_dict(name: str=None) -> list:
@@ -346,7 +287,6 @@ class WIDER(MDataset):
         if name is not None and name in wnids:
             return wnids[name]
         return wnids
-
 
 # class FeaturesDict({
 #     'faces': Sequence({

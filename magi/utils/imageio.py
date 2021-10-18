@@ -1,8 +1,8 @@
 """@xvdp
 
-File opening utilities
+Image opening utilities
 """
-from typing import Any, NoReturn, Union, overload
+from typing import Any, Union
 from inspect import currentframe, getframeinfo
 import warnings
 import logging

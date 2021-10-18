@@ -14,7 +14,7 @@ Annotation Tensor Lists will be transformed by Affine
 
 
 """
-from typing import Union, NoReturn
+from typing import Union
 from .. import config
 
 ###
@@ -70,5 +70,5 @@ class TransformAppearance(Transform):
     #super().__init__(inplace=None)
     """
     __type__ = "Appearance"
-    def __init__(self, inplace: bool=None) -> NoReturn:
+    def __init__(self, inplace: bool=None) -> None:
         self.inplace = inplace if inplace is not None else config.INPLACE

@@ -5,7 +5,7 @@ dataloaders
 
 The purpose of a dataloader is to feed data to learners. 
 Dataloaders are open ended problem. To make them as versatile as possible, magi datasets
-return data as magi.DataItem type, which can be used or cast as a list
+return data as magi.Item type, which can be used or cast as a list
 or can contain keys per list item.
 
 

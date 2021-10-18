@@ -1,4 +1,5 @@
 accimage
+nltk
 numpy
 opencv-python
 pillow
