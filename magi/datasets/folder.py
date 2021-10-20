@@ -13,7 +13,7 @@ from koreto import Col
 
 from magi.features.list_util import list_flatten, list_transpose
 
-from .datasets import DatasetM
+from .datasets import Dataset_M
 from ..features import Item, TypedItem, tolist, list_subset, list_removeall
 
 
@@ -23,7 +23,7 @@ List = Union[tuple, list]
 LooseList = Union[tuple, list, str]
 
 # pylint: disable=no-member
-class DatasetFolder(DatasetM):
+class DatasetFolder_M(Dataset_M):
     """ similar torchvision.datasets.DatasetFolder using Magi methods
 
     Builds list self.samples = [Item(), ...]

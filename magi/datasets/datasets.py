@@ -19,7 +19,7 @@ T = TypeVar('T')
 
 
 # pylint: disable=no-member
-class DatasetM(Dataset[T_co]):
+class Dataset_M(Dataset[T_co]):
     """ Image Dataset: Similar to torch Dataset, with extensions to use magi methods
     Args
         name        (str "")        # self.name = f"{self.__class__.__name__}_{name}"

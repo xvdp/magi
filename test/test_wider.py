@@ -19,17 +19,17 @@ def test_widerload():
     W = wider()
 
     item = W.samples[99]
-    name = item.get("tags", "name")[0]
+    name = item.get("names", "name")[0]
     assert osp.isfile(name), f"image not found, {name}"
-    assert len(item) == len(W._tags[1:])
-    assert item.tags == W._tags[1:]
+    assert len(item) == len(W._names[1:])
+    assert item.names == W._names[1:]
     assert item.meta == W._meta[1:]
     assert item.dtype == W._dtype[1:]
 
     item = W.__getitem__()
     assert item is not None
     assert isinstance(item[0], torch.Tensor)
-    assert item.tags == W._tags
+    assert item.names == W._names
     assert item.meta == W._meta
     assert item.dtype == W._dtype
 
@@ -57,8 +57,8 @@ def test_wider_test():
     assert len(W.samples[idx]) == len(data) - 1, "__getitem__ should return deepcopy, not instance in memory"
 
 @pytest.mark.skipif(WIDER_ROOT is None, reason=f"Could not find Wider Folder, adjust WIDER_ROOT in {__file__} to test")
-def test_wider_tags():
-    W = wider(tags=['blur'], mode="train")
-    assert W.samples[0].tags == ['bbox', 'name', 'blur']
-    assert W[0].tags == ['image', 'bbox', 'blur']
+def test_wider_names():
+    W = wider(names=['blur'], mode="train")
+    assert W.samples[0].names == ['bbox', 'name', 'blur']
+    assert W[0].names == ['image', 'bbox', 'blur']
 

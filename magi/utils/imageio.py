@@ -2,7 +2,7 @@
 
 Image opening utilities
 """
-from typing import Any, Union
+from typing import Union
 from inspect import currentframe, getframeinfo
 import warnings
 import logging
@@ -20,14 +20,17 @@ import accimage # fastest for jpg->torch
 from PIL import Image
 import cv2
 
-
 from koreto import Col
+from koreto.utils import ObjDict
+
 from .. import config
 
 
-#
-# resolve image handler backend
-def _image_backends(backend=None, img=None, dtype="float32", channels=3):
+# pylint: disable=no-member
+# pylint: disable=not-callable
+def _image_backends(backend=None, img=None, dtype="float32", channels=3) -> list:
+    """ resolve image handler backend 
+    """
     backends = ["accimage", "PIL", "opencv"]
 
     if backend is not None and  backend != backends[0]  and backend in backends:
@@ -39,11 +42,8 @@ def _image_backends(backend=None, img=None, dtype="float32", channels=3):
         _backends.remove("accimage")
     return _backends
 
-# pylint: disable=no-member
-# pylint: disable=not-callable
-
 def open_acc(img: str, dtype: str="float32", out_type: str="numpy", channels: int=None,
-             transforms: TT=None) -> Any:
+             transforms: TT=None) -> Union[torch.Tensor, np.ndarray, None]:
     """ opens image using accimage
     faster for jpg which is stored same as torch tensors, CHW
     Args
@@ -74,7 +74,7 @@ def open_acc(img: str, dtype: str="float32", out_type: str="numpy", channels: in
     return None
 
 def open_pil(img: str, dtype: str="float32", out_type: str="numpy", channels: int=None,
-             transforms: TT=None) -> Any:
+             transforms: TT=None) -> Union[torch.Tensor, np.ndarray, None]:
     """ opens image using PIL, returns np.ndarray or torch.tensor
     Args
         img         (str) image path
@@ -95,7 +95,7 @@ def open_pil(img: str, dtype: str="float32", out_type: str="numpy", channels: in
 
         if out_type != "numpy":
             out = _to_torch(out, permute=(2, 0, 1))
-        
+
         return out
     except:
         logging.debug("PIL could not resolve image")
@@ -103,7 +103,7 @@ def open_pil(img: str, dtype: str="float32", out_type: str="numpy", channels: in
     return None
 
 def open_cv(img: str, dtype: str="float32", out_type: str="numpy", channels: int=None,
-            transforms:TT=None) -> Any:
+            transforms:TT=None) -> Union[torch.Tensor, np.ndarray, None]:
     """ opens image using opencv, returns np.ndarray or torch.tensor
     Args
         img         (str) image path
@@ -128,14 +128,14 @@ def open_cv(img: str, dtype: str="float32", out_type: str="numpy", channels: int
 
     return None
 
-def _to_torch(data, permute=None):
+def _to_torch(data: np.ndarray, permute: Union[list, tuple]= None) -> torch.Tensor:
     """"""
     data = torch.from_numpy(data)
     if permute is not None:
         data = data.permute(*permute).contiguous()
     return data
 
-def _assert_dtype(dtype, out_type):
+def _assert_dtype(dtype: str, out_type: str) -> None:
     _valid_dypes = {'numpy':["uint8", "float16", "float32", "float64"],
                     'torch':["float16", "float32", "float64"]}[out_type]
     assert dtype in _valid_dypes, f"{Col.RB} only {_valid_dypes} supported, found: {dtype}"
@@ -166,7 +166,9 @@ def to_np_dtype(out: np.ndarray, dtype:str, out_type="torch") -> np.ndarray:
         out = (out*(2**31-1)).astype(dtype)
     return out
 
-def get_cache_name(url, cache_dir=None):
+def get_cache_name(url, cache_dir=None) -> str:
+    """ caches names url images to local file.
+    """
     if cache_dir is None:
         cache_dir = config.get_cache_dir_path('images')
         os.makedirs(cache_dir, exist_ok=True)
@@ -177,16 +179,42 @@ def get_cache_name(url, cache_dir=None):
         fname += _ext
     return osp.join(cache_dir, fname)
 
-def open_url(url:str, cache_name:str=None, dtype: str="float32", out_type: str="torch",
-             channels: int=None, transforms: TT=None) -> Union[torch.Tensor, np.ndarray]:
+def cache_image(img: Image, url: str, cache_name: str=None) -> Union[None, str]:
+    """ Saves image, and url address dict to cache folder
+    Args
+        img         (PIL.Image)
+        url         (str)
+        cache_name  (str [None])
     """
+    if cache_name is None:
+        return None
+
+    cache_dict = ObjDict()
+    cache_file = osp.join(osp.dirname(cache_name), 'image_cache.json')
+    if osp.isfile(cache_file):
+        cache_dict.from_json(cache_file)
+    cache_dict.update({osp.basename(cache_name):url})
+    cache_dict.to_json(cache_file)
+
+    img.save(cache_name)
+    return cache_name
+
+def open_url(url:str, cache_name:str=None, dtype: str="float32", out_type: str="torch",
+             channels: int=None, transforms: TT=None) -> Union[torch.Tensor, np.ndarray, None]:
+    """ Opens url image and caches to 'cache_name' if not None
+    Args
+        url         (str) valid url
+        cache_name  (str [None]) # if present and valid save
+        dtype       (str ['float32']) in uint8, float16, float32, float64
+        out_type    (str ['torch']) | 'numpy'
+        channels    (int [None]) default open with stored channels, 1,3,4 - fix channels
+        transforms  (torchvision transform [None]) apply torchvision transform
     """
     response = requests.get(url)
     if response.status_code == 200:
         try:
             out = Image.open(BytesIO(response.content))
-            if cache_name is not None:
-                out.save(cache_name)
+            cache_image(out, url, cache_name)
             if transforms is not None:
                 out = transforms(out)
 
@@ -205,8 +233,8 @@ def open_url(url:str, cache_name:str=None, dtype: str="float32", out_type: str="
 
 def open_img(img: str, out_type: str="numpy", dtype: str="float32", grad: bool=None,
              device: Union[str, torch.device]=None, backend: str=None, transforms: TT=None,
-             channels: int=None, verbose: bool=True) -> Any:
-    """ general image open
+             channels: int=None, verbose: bool=True) -> Union[torch.Tensor, np.ndarray, None]:
+    """ image open
         accimage:   faster for jpg RGB
         PIL
         cv2
@@ -300,6 +328,9 @@ def np_fix_channels(img: np.ndarray, channels: int, fillvalue: Union[int,float]=
 
 
 def grayscale(img: Union[torch.Tensor, np.ndarray]) ->  Union[torch.Tensor, np.ndarray]:
+    """ convert 3 or 4 channel image to grayscale
+    using RGB* [0.2989, 0.5870, 0.1140]
+    """
     if isinstance(img, torch.Tensor):
         return _grayscale_torch(img)
     else:
@@ -332,7 +363,7 @@ def _grayscale_torch(img: torch.Tensor) -> torch.Tensor:
         convert 3 or 4 channel image to greyscale
     """
     if _grayscale_assert(img, channel_index=1, dims=4):
-        n,c,h,w = img.shape
+        n, c, h, w = img.shape
 
         tog = torch.tensor([[[0.2989], [0.5870], [0.1140]]], dtype=img.dtype, device=img.device)
         return torch.clamp((img[:, :3, ...].reshape(n, 3, -1)*tog).sum(axis=1, keepdims=True), 0,1).reshape(n, 1, h, w)
@@ -359,7 +390,7 @@ def save_img(data: np.ndarray, name: str, ext: str=".png", folder: str=".", conf
 
     return True
 
-def _resolve_path(name: str, ext: str=".png", folder: str=".", conflict: int=1):
+def _resolve_path(name: str, ext: str=".png", folder: str=".", conflict: int=1) -> str:
     """
     """
     folder = osp.abspath(osp.expanduser(folder))

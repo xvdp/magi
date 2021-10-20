@@ -8,11 +8,11 @@ import numpy as np
 import torch
 from torchvision import transforms as TT
 from tqdm import tqdm
-from .datasets import DatasetM
+from .datasets import Dataset_M
 from ..features import Item
 
 # pylint: disable=no-member
-class WIDER(DatasetM):
+class WIDER(Dataset_M):
     """ Wider Dataset (from http://shuoyang1213.me/WIDERFACE/)
     Annotated faces on crowds on a rangeof 20 activities.
 
@@ -37,7 +37,7 @@ class WIDER(DatasetM):
 
 
     """
-    def __init__(self, data_root :str=None, mode: str="train", tags: list=None, name: str="",
+    def __init__(self, data_root :str=None, mode: str="train", names: list=None, name: str="",
                  dtype: str=None, device: str="cpu", inplace: bool=True, grad: bool=False,
                  channels: int=3, transforms: TT=None, **kwargs) -> None:
         """
@@ -47,9 +47,9 @@ class WIDER(DatasetM):
                 otherwise writes to .magi path registry
             mode        (str [train]) | val | test
 
-            tags        (list [None]) if None __getitem__() returns all tags in self._tags dataset definition
-                if tags is not None, items will return tags ["bbox", "name"] on daset samples and ["image", "bbox"]
-                and any other specified in `tags=[]` arg available to WIDER dataset:
+            names        (list [None]) if None __getitem__() returns all names in self._names dataset definition
+                if names is not None, items will return names ["bbox", "name"] on daset samples and ["image", "bbox"]
+                and any other specified in `names=[]` arg available to WIDER dataset:
         ['blur','expression','illumination','invalid','occlusion','pose', 'index', # WIDER per bbox attributes
          'activity", 'wider_id', 'wordnet_id'] # folder name -> activity name, number, and wordnet noun
 
@@ -65,9 +65,9 @@ class WIDER(DatasetM):
         self.samples = []
 
         # dataset definition
-        # tags available to dataset
+        # names available to dataset
 
-        self._tags = ['image', 'bbox', 'name',
+        self._names = ['image', 'bbox', 'name',
                       'blur', 'expression', 'illumination', 'invalid', 'occlusion', 'pose',
                       'index', 'wider_activity', 'wider_id',  'wordnet_id']
 
@@ -79,7 +79,7 @@ class WIDER(DatasetM):
                        'uint8', 'bool', 'bool', 'bool', 'uint8', 'bool',
                        'int', 'str', 'uint8', 'int']
 
-        self.tags = self._filter_tags(tags)
+        self.names = self._filter_names(names)
         self._make_dataset(mode=mode)
 
     def __getitem__(self, index:int=None) -> Item:
@@ -89,9 +89,9 @@ class WIDER(DatasetM):
         item =  self.samples[index].deepcopy()
 
         path_idx = item.get_indices("meta", "path")[0]
-        path_name = item[path_idx] if self.tags is None or "name" in self.tags else item.pop(path_idx)
+        path_name = item[path_idx] if self.names is None or "name" in self.names else item.pop(path_idx)
         image = self.open(path_name) # open dtype, device and torch transforms from parent class
-        item.insert(0, image, meta="data_2d", tags="image", dtype=self.dtype)
+        item.insert(0, image, meta="data_2d", names="image", dtype=self.dtype)
         item.to_torch(device=self.device)
 
         return item
@@ -99,12 +99,12 @@ class WIDER(DatasetM):
     def __len__(self) -> int:
         return len(self.samples)
 
-    def _filter_tags(self, tags):
-        """ tags .tags[]
+    def _filter_names(self, names):
+        """ names .names[]
         """
-        if tags is not None:
-            tags = tags if isinstance(tags, list) else [tags]
-        return tags
+        if names is not None:
+            names = names if isinstance(names, list) else [names]
+        return names
 
     def _make_dataset(self, mode: str="train") -> None:
         """ .load_dset(mode=<'train' | 'val' | 'test'>)
@@ -126,10 +126,10 @@ class WIDER(DatasetM):
 
     def _read_annotations(self, image_list_file: list, folder: str) -> list:
         """ returns list of Item
-            Bounding Boxes are grouped per image for augmentation purposes [N, 2,2] in format x,y,w,h
+            Bounding Boxes are grouped per image for augmentation [N,2,2] in format x,y,w,h
 
         with keys for entries
-            .tags   entry name: image, bbox, name, *attributes, activity, wider_id, wordnet_id
+            .names   entry name: image, bbox, name, *attributes, activity, wider_id, wordnet_id
             .meta   entry type: data_2d, position_2d, path, *[attr_id]*6, class_name, *[class_id]*3
             .dtype  entry dtype: self.dtype, self.dtype, str, int, str, uint8, int, int, int
 
@@ -138,12 +138,11 @@ class WIDER(DatasetM):
         if annotation file not found, download and place in path
 
         # with open(osp.join(self.paths['annotations'], f"readme.txt"), 'r') as _fi:
-        #     dset_tags = _fi.read().split("\n")[-1].split(", ")
+        #     dset_names = _fi.read().split("\n")[-1].split(", ")
         # attrs = ['x1', 'y1', 'w', 'h', 'blur', 'expression', 'illumination', 'invalid',
         #         'occlusion', 'pose']
         # ['x1', 'y1', 'w', 'h'] -> bbox
         # ['blur', 'expression', 'illumination', 'invalid', 'occlusion', 'pose'] -> attributes
-
         """
         # read image list
         with open(image_list_file, 'r') as _fi:
@@ -152,20 +151,20 @@ class WIDER(DatasetM):
         images = []
         i = 0
 
-        # sample tags
-        tags = self._tags[1:]
+        # sample names
+        names = self._names[1:]
         meta = self._meta[1:]
         dtype = self._dtype[1:]
 
         _keep_indices = None
-        if self.tags is not None:
-            _immutable_tags = ["bbox", "name"]
-            _keep_indices = [i for i in range(len(tags)) if tags[i] in self.tags + _immutable_tags]
-            tags = [tags[i] for i in _keep_indices]
+        if self.names is not None:
+            _immutable_names = ["bbox", "name"]
+            _keep_indices = [i for i in range(len(names)) if names[i] in self.names + _immutable_names]
+            names = [names[i] for i in _keep_indices]
             meta = [meta[i] for i in _keep_indices]
             dtype = [dtype[i] for i in _keep_indices]
 
-        attrnames = self._tags[3:9]
+        attrnames = self._names[3:9]
 
         while i < len(text) - 1:
             line = text[i]
@@ -210,13 +209,13 @@ class WIDER(DatasetM):
 
             else: # images without bboxes
                 values = [name] + values
-                idcs = [i for i in range(len(tags)) if tags[i] not in ["bbox"]+attrnames]
+                idcs = [i for i in range(len(names)) if names[i] not in ["bbox"]+attrnames]
                 if not len(images):
-                    tags = [tags[i] for i in idcs]
+                    names = [names[i] for i in idcs]
                     meta = [meta[i] for i in idcs]
                     dtype = [dtype[i] for i in idcs]
 
-            images.append(Item(values, tags=tags, meta=meta, dtype=dtype))
+            images.append(Item(values, names=names, meta=meta, dtype=dtype))
         return images
 
     @staticmethod
