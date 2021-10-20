@@ -14,7 +14,7 @@ _abc = [['Die', 'Welt', 'ist', 'alles,', 'was', 'der', 'Fall', 'ist.'],
 
 def test_list_subset_int():
     in_list = _SENTENCE
-    subset = random.randint(0, len(in_list)-1)
+    subset = random.randint(1, len(in_list)-1)
     out_list = list_subset(in_list, subset)
     assert len(out_list) == subset
 

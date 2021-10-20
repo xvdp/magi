@@ -24,3 +24,4 @@ from curated finite labeled datasets to open graphs.
 from .datasets import *
 from .wider import WIDER
 from .imagenet import ImageNet
+from .noisy import Noise
