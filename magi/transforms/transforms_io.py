@@ -19,7 +19,7 @@ import logging
 import torch
 import torchvision.transforms as TT
 from koreto import Col
-from ._transforms import Transform, TransformAppearance
+from .transforms_base import Transform
 from . import functional_io as Fio
 from .. import config
 from ..utils import warn_grad_inplace, warn_np_dtypes

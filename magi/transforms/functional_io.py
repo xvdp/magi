@@ -2,14 +2,14 @@
 functional for  transforms.__type__ = "IO"
 
 """
-from typing import Any, Union
+from typing import Union
 import os.path as osp
 from urllib.parse import urlparse
 import numpy as np
 import torch
 import torchvision.transforms as TT
 from .. import config
-from ..utils import open_img, check_tensor, check_contiguous
+from ..utils import open_img, check_contiguous
 
 # pylint: disable=no-member
 def open_file(file_name: Union[str, list, tuple], dtype: str, device: Union[str, torch.device]="cpu",
