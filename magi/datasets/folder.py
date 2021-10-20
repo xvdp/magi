@@ -4,18 +4,18 @@ DatasetFolder, classification datset where labels are associate to subfolders
 .__getitem__() -> magi.features.Item()
 
 """
-from typing import Union, Any
+from typing import Union
 import os
 import os.path as osp
-import random
-import numpy as np
 import torch
 from torchvision import transforms as TT
+from koreto import Col
 
 from magi.features.list_util import list_flatten, list_transpose
 
 from .datasets import DatasetM
-from ..features import Item, tolist, list_subset
+from ..features import Item, TypedItem, tolist, list_subset, list_removeall
+
 
 IMG_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.ppm', '.bmp', '.pgm', '.tif', '.tiff', '.webp')
 
@@ -23,10 +23,9 @@ List = Union[tuple, list]
 LooseList = Union[tuple, list, str]
 
 # pylint: disable=no-member
-class DatasetFolderM(DatasetM):
+class DatasetFolder(DatasetM):
     """ similar torchvision.datasets.DatasetFolder using Magi methods
 
-    
     Builds list self.samples = [Item(), ...]
     .__getItem__() returns Item()
 
@@ -54,7 +53,7 @@ class DatasetFolderM(DatasetM):
         name        (str [""]) -> self.name = f"__class__.__name__{name}"
         subset      (list, int [None]) ->  returns a subset dataset with classes
             list of foldernames | list of indices | int random set of n folders
-        ordered     (int [0]) -> if > 0 orders samples cycling classes with n 'ordered; elements per class
+        ordered     (int [0]) -> if > 0 cycles classes with n 'ordered; elements per class
         extensions  (list|str) extensions considered in class folders
         dtype       (str [torch.get_default_dtype()])
         device      (str [cpu])
@@ -64,7 +63,8 @@ class DatasetFolderM(DatasetM):
         transforms  (torchvision.transforms)
 
     """
-    def __init__(self, data_root, mode: str="", name: str="", subset: Union[List, int]=None, ordered: int=0, tags: list=None,
+    def __init__(self, data_root=None, mode: str="", name: str="", subset: Union[List, int]=None,
+                 ordered: int=0, names: list=['image', 'target_index'],
                  extensions: LooseList=('.jpg', '.jpeg', '.png', '.ppm', '.bmp', '.pgm', '.tif', '.tiff', '.webp'),
                  dtype: Union[str, torch.dtype]=None, device: Union[str, torch.device]="cpu",
                  inplace: bool=True, grad: bool=False, channels: int=3, transforms: TT=None):
@@ -73,58 +73,72 @@ class DatasetFolderM(DatasetM):
         super().__init__(name=name, dtype=dtype, device=device, inplace=inplace, grad=grad,
                          channels=channels, transforms=transforms)
 
-        self.data_root = osp.join(osp.abspath(osp.expanduser(data_root)), mode)
-        assert osp.isdir(self.data_root), f"dataset root {self.data_root} not found"
+        data_root = self.get_dataset_path(data_root)
+        self.mode = mode
+        self.data_root = osp.join(data_root, mode)
+        assert osp.isdir(self.data_root), f"{Col.YB}'{self.data_root}' not found{Col.AU}"
 
         self.ext = [ext.lower() for ext in tolist(extensions)]
         self.ordered = ordered
 
         self.classes, self.class_to_idx = self._get_classes(self.data_root, subset)
-        self.class_names = self._get_class_names(self.classes) # default: None
+        self.target_names = []
+        self._get_target_names() # implement per dataset
 
+        # if no classes, remove all class info
+        if not self.target_names:
+            list_removeall(names, 'target_name')
+        if not self.classes:
+            list_removeall(names, ['target_folder', 'target_index'])
 
-        # Item: what we want to pass to the learner
-        # Item components
-
-        self._tags = ['image', 'name', 'image_index', 'target_folder', 'target_index']
-        self._meta = ['data_2d', 'path', 'image_id', 'class_name', 'class_id']
-        self._dtype = [self.dtype, 'str', 'int', 'str', 'int']
-
-        _tags = [1,-1]
-
-        tags = [] if tags is None else [t for t in self._tags[1:-1] if t in tags]
-        self.tags = ["image", *tags, "target_index"]  # for classification we need image, and target
-
-
-        if self.class_names is not None:
-            self._tags.insert(-1, "class")
-            self._meta.insert(-1, "class_name")
-            self._dtype.insert(-1, "str")
+        self.item = self._define_item(names)
 
         self._make_dataset()
 
+    def _define_item(self, names=['image', 'target_index']):
+        """
+        """
+        self.keep_names = names.copy() # on __getitem__
+        if 'filename' not in names:
+            names += ['filename']
+
+        _elems = {'image': ['data_2d', self.dtype],
+                  'filename': ['path', 'str'],      # filename
+                  'image_index': ['id', 'int'],     # image index
+                  'target_folder': ['name', 'str'], # class folder, e.g. n04557648
+                  'target_name': ['name', 'str'],   # class name, e.g. 'water_bottle' # requires self.target_names
+                  'target_index': ['id', 'int']}    # class index
+
+        meta = [_elems[name][0] for name in names]
+        dtype = [_elems[name][1] for name in names]
+
+        return TypedItem(names, meta, dtype)
+
+    def _make_item(self, **kwargs):
+        """
+        Filters kwargs by names defined in self._define_item()
+        need to pass the correct items in self._make_dataset()
+        """
+        names = self.item.__dict__['names']
+        data = [None]*len(names)
+        for i, key in enumerate(names):
+            if key in kwargs:
+                data[i] = kwargs[key]
+        return self.item.get(data)
+
     def __getitem__(self, index:str=None) -> Item:
         """
-        returns data[index(None)] if None, randint
-        TODO apply seed to ensure data parallel
-
+        Returns Item(data[index(None)], ...)
         Args:
-            index (int): Index
-
-        Returns:
-            [sample, ..., label]
-            or [sample, annotation, ..., label]
-            or [sample, ..., index, label]
+            index (int): Index if None, randint
         """
-        index = index if index is not None else torch.randit(0, len(self), (1,)).item()
-
+        index = index if index is not None else torch.randint(0, len(self), (1,)).item()
         item =  self.samples[index].deepcopy()
 
         path_idx = item.get_indices("meta", "path")[0]
-        path_name = item[path_idx] if self.tags is None or "name" in self.tags else item.pop(path_idx)
+        path_name = item[path_idx] if "filename" in self.keep_names else item.pop(path_idx)
 
-        image = self.open(path_name)
-        item.insert(0, image, meta="data_2d", tags="image", dtype=self.dtype)
+        item[0] = self.open(path_name)
         item.to_torch(device=self.device)
 
         return item
@@ -145,54 +159,50 @@ class DatasetFolderM(DatasetM):
         classes_idx = {classes[i]: i for i in range(len(classes))}
         return classes, classes_idx
 
-    def _make_data_item(self, file_name, image_id, class_name, class_id):
-        data = [file_name]
-        if "image_index" in self._tags:
-            data += [image_id]
-        if "target_folder" in self._tags:
-            data += [class_name]
-        if "class" in self._tags:
-            data += self.class_names[class_id]
-        if "target_index" in self.tags:
-            data += class_id
-
-        return Item(data, tags=self._tags, meta=self._meta, dtype=self._dtype)
-
     def _make_dataset(self) -> None:
+        """ collects images to make dataset
+        if list of subfolders, each sub folder becomes a class
+        if flatt list, no class information is included
+
+        optionally
+        can return a dataset ordered (arg, 'ordered' in __init__()) cycling classes
+        or a subset of the classes (arg, 'subset' in __init__())
         """
-        """
+        is_file = lambda x: x.is_file() and osp.splitext(x)[-1].lower() in self.ext
+        get_files = lambda x: sorted([d.path for d in os.scandir(x) if is_file(d)])
         self.samples = None # delete whatever was there
-        samples = []
-        class_sample_count = []
 
-        for class_id, class_name in enumerate(self.classes):
-
-            class_samples = []
-            folder = os.path.join(self.data_root, class_name)
-            files = sorted([f.path for f in os.scandir(folder)
-                            if f.is_file() and osp.splitext(f.name)[1].lower() in self.ext])
-            j = sum(class_sample_count)
-
-            for i, file_name in enumerate(files):
-                class_samples.append(self._make_data_item(file_name, i+j, class_name, class_id))
-
-            class_sample_count.append(len(files))
-            samples.append(class_samples)
-
-        if self.ordered:
-            self.samples = list_transpose(samples, self.ordered)
+        if not self.classes:
+            self.samples = []
+            for i, path in enumerate(get_files(self.data_root)):
+                self.samples += [self._make_item(filename=path, image_index=i)]
         else:
-            self.samples = list_flatten(samples)
+            i = 0
+            samples = []
+            for class_id, class_name in enumerate(self.classes):
+                class_samples = []
+                for _, path in enumerate(get_files(osp.join(self.data_root, class_name))):
+                    _itemkw = {"filename":path, "image_index":i, "target_folder":class_name, "target_index": class_id}
+                    if "target_name" in self.item.__dict__['names']:
+                        _itemkw["target_name"] = self.target_names[class_id]
+                    class_samples.append(self._make_item(**_itemkw))
+                    i += 1
+                samples.append(class_samples)
+
+            self.samples = samples
+            if self.ordered:
+                self.samples = list_transpose(samples, self.ordered)
+            else:
+                self.samples = list_flatten(samples, depth=1)
 
 
-    @staticmethod
-    def _get_class_names(classes: List) -> list:
-        class_names = []
+    def _get_target_names(self) -> None:
+        self.target_names = []
         ## implementation of mapping between folders and names
         ## eg. with ImageNet
         # from nltk.corpus import wordnet
-        # class_names = []
-        # for wnid in classes:
-        #    class_names.append(wordnet.synset_from_pos_and_offset(wnid[0], int(wnid[1:])).lemma_names('eng')[0])
-        return class_names
-
+        #   self.target_names = []
+        # if self.classes:
+        #     for wni in self.classes:
+        #         tgt = wordnet.synset_from_pos_and_offset(wni[0], int(wni[1:])).lemma_names('eng')[0]
+        #         self.target_names.append(tgt)

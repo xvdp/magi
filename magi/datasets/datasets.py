@@ -2,20 +2,21 @@
 """
 import inspect
 from typing import TypeVar, Union
+import os.path as osp
 
 import torch
 from torch.utils.data.dataset import Dataset, IterableDataset
 import torchvision.transforms as TT
 
+from koreto import Col
+
 from ..transforms import Open
 from ..utils import dtype_as_str
+from ..config import load_dataset_path, write_dataset_path
 
 T_co = TypeVar('T_co', covariant=True)
 T = TypeVar('T')
 
-
-# self, dsetname=None, root=None, transforms=None, ttransforms=None, annotfile=None, device="cpu",
-#                  dtype=None, out_type="torch", extensions=None, return_index=False, ordered=0, **kwargs
 
 # pylint: disable=no-member
 class DatasetM(Dataset[T_co]):
@@ -35,11 +36,10 @@ class DatasetM(Dataset[T_co]):
             # TODO remove to generalize DatasetMagi for data other than images
 
         transforms  (torchvision.transform)
-
     """
-    def __init__(self, name: str="", dtype: Union[str, torch.dtype]=None, device: Union[str, torch.device]="cpu",
-                 inplace: bool=True, grad: bool=False, channels: int=3,
-                 transforms: TT=None):
+    def __init__(self, name: str="", dtype: Union[str, torch.dtype]=None,
+                 device: Union[str, torch.device]="cpu", inplace: bool=True,
+                 grad: bool=False, channels: int=3, transforms: TT=None):
 
         self.name = f"{self.__class__.__name__}_{name}"
         self.dtype = dtype_as_str(dtype if dtype is not None else torch.get_default_dtype())
@@ -51,8 +51,21 @@ class DatasetM(Dataset[T_co]):
 
         self.samples = []
 
+    def get_dataset_path(self, path: str, *paths: str) -> str:
+        """ keep dataset path registry easy and updated
+        storing new paths if provided, deleting dead paths
+        returning fastest path if more than one in config
+        """
+        if path is None:
+            path = load_dataset_path(self.__class__.__name__, *paths)
+        elif osp.isdir(path):
+            write_dataset_path(self.__class__.__name__, path, *paths)
+        assert path is not None and osp.isdir(path), f"{Col.YB}{self.__class__.__name__} data_root '{path}' not found, pass valid data_root arg{Col.AU}"
+        return path
+
+
     def _make_dataset(self, **kwargs) -> None:
-        pass # parse folder into self.samples
+        NotImplementedError("Need to be implemented for dataset")
 
     def __repr__(self, exclude_keys: Union[list, tuple]=None) -> str:
         """ utility, auto __repr__()

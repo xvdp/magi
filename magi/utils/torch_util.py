@@ -1,11 +1,20 @@
 """@xvdp
-standard torch checks and and ducktape
+standard torch checks
 """
 from typing import Union
 import torch
 import numpy as np
 
 # pylint: disable=no-member
+def is_torch_strdtype(dtype: str) -> bool:
+    """ torch dtypes from torch.__dict__"""
+    _torch_dtypes = ['uint8', 'int8', 'int16', 'short', 'int32', 'int', 'int64', 'long',
+                     'float16', 'half', 'float32', 'float', 'float64', 'double', 'complex32',
+                     'complex64', 'cfloat', 'complex128', 'cdouble', 'bool', 'qint8', 'quint8',
+                     'qint32', 'bfloat16', 'quint4x2']
+    return dtype in _torch_dtypes
+
+
 def torch_dtype(dtype: Union[str, torch.dtype, list, tuple], force_default: bool=False, fault_tolerant: bool=True) -> Union[torch.dtype, list]:
     """ Returns torch.dtype, None, torch.det_default_dtype() or list of dtypes
     Args:
@@ -43,10 +52,7 @@ def torch_dtype(dtype: Union[str, torch.dtype, list, tuple], force_default: bool
 def dtype_as_str(dtype: Union[str, torch.dtype, np.dtype])-> str:
     """ convert torch or numpy dtype to str
     """
-    _torch_dtypes = ['uint8', 'int8', 'int16', 'short', 'int32', 'int', 'int64', 'long', 'float16', 'half',
-                     'float32', 'float', 'float64', 'double', 'complex32', 'complex64', 'cfloat', 'complex128',
-                     'cdouble', 'bool', 'qint8', 'quint8', 'qint32', 'bfloat16', 'quint4x2']
-    if isinstance(dtype, str) and dtype in _torch_dtypes:
+    if isinstance(dtype, str) and is_torch_strdtype(dtype):
         return dtype
 
     if isinstance(dtype, torch.dtype):

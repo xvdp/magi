@@ -37,12 +37,14 @@ class WIDER(DatasetM):
 
 
     """
-    def __init__(self, data_root :str, mode: str="train", tags: list=None, name: str="",
+    def __init__(self, data_root :str=None, mode: str="train", tags: list=None, name: str="",
                  dtype: str=None, device: str="cpu", inplace: bool=True, grad: bool=False,
                  channels: int=3, transforms: TT=None, **kwargs) -> None:
         """
         Args
             data_root   (str) path where dset was uncompressed
+                if None it searches and .magi path registry and
+                otherwise writes to .magi path registry
             mode        (str [train]) | val | test
 
             tags        (list [None]) if None __getitem__() returns all tags in self._tags dataset definition
@@ -58,14 +60,13 @@ class WIDER(DatasetM):
         super().__init__(name=name, dtype=dtype, device=device, inplace=inplace, grad=grad,
                           channels=channels, transforms=transforms)
 
-        self.data_root = data_root
-        assert osp.isdir(self.data_root), f"WIDER data_root '{self.data_root}' not found"
+        self.data_root = self.get_dataset_path(data_root)
 
         self.samples = []
 
         # dataset definition
         # tags available to dataset
-        
+
         self._tags = ['image', 'bbox', 'name',
                       'blur', 'expression', 'illumination', 'invalid', 'occlusion', 'pose',
                       'index', 'wider_activity', 'wider_id',  'wordnet_id']
@@ -92,7 +93,7 @@ class WIDER(DatasetM):
         image = self.open(path_name) # open dtype, device and torch transforms from parent class
         item.insert(0, image, meta="data_2d", tags="image", dtype=self.dtype)
         item.to_torch(device=self.device)
-    
+
         return item
 
     def __len__(self) -> int:

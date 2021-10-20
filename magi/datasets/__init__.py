@@ -20,9 +20,7 @@ to unlabelled data,(N)Labels, or data with multiple labels, (N)Labels, (N)Labels
 to data with labels per tesnsor element (NCHW)Lablels
 to data with Sparse Tensor Labeling, or Adjacency Graphs.
 from curated finite labeled datasets to open graphs.
-
-
-So how do we do all this
 """
 from .datasets import *
 from .wider import WIDER
+from .imagenet import ImageNet

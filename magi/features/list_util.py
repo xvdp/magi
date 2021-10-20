@@ -1,7 +1,7 @@
 """@xvdp
 """
 import random
-from typing import Union
+from typing import Union, Any
 import numpy as np
 import torch
 List = Union[tuple, list, set]
@@ -15,7 +15,7 @@ def is_int_iterable(*args) -> bool:
     return all([isinstance(arg, int) or (isinstance(arg, _iterable) and all([isinstance(item, int)
             for item in arg])) for arg in args])
 
-def list_flatten(*args, sort: bool=False, unique: bool=False) -> list:
+def list_flatten(*args, sort: bool=False, unique: bool=False, depth: int=None) -> list:
     """ Flattens iterables to a list recursively
     non iterables, and iterables not in (ndarray, Tensor, list, set, tuple) are not flattened
     Args
@@ -32,8 +32,9 @@ def list_flatten(*args, sort: bool=False, unique: bool=False) -> list:
         if isinstance(arg, _arrays):
             out.extend(arg.reshape(-1).tolist())
         elif isinstance(arg, (list, set, tuple)):
-            if any([isinstance(x, _iterable) for x in arg]):
-                arg = list_flatten(*arg)
+            if any([isinstance(x, _iterable) for x in arg]) and (depth is None or depth > 0):
+                depth = depth if depth is None else depth - 1
+                arg = list_flatten(*arg, sort=sort, unique=unique, depth=depth)
             out.extend(arg)
         else:
             out.append(arg)
@@ -112,3 +113,16 @@ def list_transpose(list2d: list, stride: int=1) -> list:
         _i += stride
         _len = sum(_lens)
     return out
+
+def list_removeall(io_list: list, data: Any) -> None:
+    """ Remove all instances of items from list
+    """
+    _removed = False
+    while data in io_list:
+        io_list.remove(data)
+        _removed = True
+
+    if not _removed and isinstance(data, (list, tuple)):
+        for elem in data:
+            list_removeall(io_list, elem)
+    

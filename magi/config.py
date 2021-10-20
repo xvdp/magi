@@ -6,7 +6,7 @@ globals for namespace magi, cacheable
                     # calls resolve_dtype(dtype, force_global[False])
 
     INPLACE: bool   # is set by transfors.Open([inplace= | grad=True])
-    BOXMODE: Enum    
+    BOXMODE: Enum
 
     DEBUG: bool
     DATAPATHS: dict
@@ -16,10 +16,10 @@ import logging
 import os
 import os.path as osp
 from enum import Enum
-import pickle
+from timeit import timeit
 import tempfile
 import torch
-from koreto import ObjDict
+from koreto import ObjDict, Col
 # pylint: disable=no-member
 # pylint: disable=not-callable
 
@@ -199,7 +199,7 @@ def save_globals(*paths: str) -> str:
     obj.to_yaml(name)
     return name
 
-def load_globals(*paths: str) -> NoReturn:
+def load_globals(*paths: str) -> None:
     """ load saved defautls
     """
     name = osp.join(get_cache_dir_path(*paths), "magi_config.yml")
@@ -214,3 +214,53 @@ def load_globals(*paths: str) -> NoReturn:
         _load.BOXMODE = BoxMode(_load.BOXMODE )
     dic.update(**_load)
     print(f"Loaded globals{_load}")
+
+#
+# dataset registry
+#
+def write_dataset_cache(datasets: ObjDict, *paths: str):
+    cachename = osp.join(get_cache_dir_path(*paths), "datasets.yml")
+    datasets.to_yaml(cachename)
+    print(f"    dataset cache written to {Col.BB}'{cachename}'{Col.AU}")
+
+def write_dataset_path(name: str, path: str, *paths: str):
+    datasets = load_dataset_cache(*paths)
+    if name not in datasets:
+        datasets[name] = []
+
+    if path not in datasets[name]:
+        datasets[name].append(path)
+        print(f"{Col.B}Write {name} data_root {Col.GB}'{path}'{Col.AU}")
+        write_dataset_cache(datasets, *paths)
+
+def load_dataset_cache(*paths: str) -> ObjDict:
+    """ load and clean up paths.
+    """
+    _dirty = False
+    datasets = ObjDict()
+    cachename = osp.join(get_cache_dir_path(*paths), "datasets.yml")
+    if osp.isfile(cachename):
+        datasets.from_yaml(cachename)
+        for _, name in enumerate(datasets):
+            _len = len(datasets[name])
+            datasets[name] = [pth for pth in datasets[name] if osp.isdir(pth)]
+            _dirty = len(datasets[name]) != _len
+            if len(datasets[name]) == 0:
+                del datasets[name]
+    if _dirty:
+        write_dataset_cache(datasets, *paths)
+    return datasets
+
+def load_dataset_path(name: str, *paths: str) -> str:
+    """ get cached path, if more than one, return minimum
+    """
+    path = None
+    datasets = load_dataset_cache(*paths)
+    if name in datasets:
+        if len(datasets[name]) == 1:  # if more than 1, test access speed
+            path = datasets[name][0]
+        else:
+            _time = [timeit(setup='import os', number=100, stmt=f"os.listdir('{p}')")
+                     for p in datasets[name]]
+            path = datasets[name][_time.index(min(_time))]
+    return path

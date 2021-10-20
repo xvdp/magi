@@ -135,25 +135,6 @@ def _to_torch(data, permute=None):
         data = data.permute(*permute).contiguous()
     return data
 
-def dtype_as_str(dtype: Union[str, torch.dtype, np.dtype], out_type="torch")->str:
-    """ unused in open_img ensure dtype is string on open_img call
-    
-    """
-    if isinstance(dtype, str):
-            return dtype
-
-    if isinstance(dtype, torch.dtype) and dtype.is_floating_point:
-        return dtype.__repr__().split('.')[-1]
-
-    # numpy dtypes are a bit cockamamie
-    #_nptypes = [np.dtype('float32'), np.dtype('float16'), np.dtype('float64'), np.dtype('uint8'),
-    #            np.uint8, np.float16, np.float32, np.float64, np.int64]
-    _npvalid = ['uint8', 'float16', 'float32', 'float64']
-    if isinstance(dtype, np.dtype):
-        return dtype.name
-    if hasattr(dtype, '__name__'):
-        return (dtype.__name__)
-
 def _assert_dtype(dtype, out_type):
     _valid_dypes = {'numpy':["uint8", "float16", "float32", "float64"],
                     'torch':["float16", "float32", "float64"]}[out_type]
