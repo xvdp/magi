@@ -11,12 +11,10 @@ dataset.__getitem__() can output a plain ListDict without tags as canonical Imag
         ot iy can output any size list, or tag each element, eg.
     [image_tensor, image_id, class_id].{"tags":["image", "image_id", "class_id]}
 
-ListDict() has no requirements, at its simplest is a list, or a list with dictionary, 
+ListDict() has no requirements, at its simplest is a list, or a list with dictionary
 
-Item is a ListDict with keys which contents are lists  which if filled by datasets can inform dataloader collate_fn
+Item is a ListDict with keys required to be lists of same length as main list
     collate_fn, see .dataloader
-    .tags()
-
 """
 from typing import Any, TypeVar, Iterable, Union
 from inspect import getmembers
@@ -24,7 +22,7 @@ from copy import deepcopy
 import numpy as np
 import torch
 from ..utils import torch_dtype
-from .list_util import is_int_iterable, list_flatten, list_modulo
+from .list_util import is_int_iterable, list_flatten, list_modulo, list_intersect
 
 _T = TypeVar('_T')
 
@@ -64,9 +62,20 @@ class ListDict(list):
     def deepcopy(self) -> Any:
         return ListDict(super().copy(), **self.__dict__.copy())
 
-    def clear(self) -> None:
+    def clear(self, empty_cache: bool=True) -> None:
+        """ Remove all items from list and dictionary
+        Args:
+            empty_cache (bool[True]) if cuda tensors, delete cache 
+        """
+        _is_cuda = False
+        for item in self:
+            _is_cuda = _is_cuda or (isinstance(item, torch.Tensor) and item.device.type == 'cuda')
+            del item
         super().clear()
         self.__dict__.clear()
+        if _is_cuda and empty_cache:
+            torch.cuda.synchronize()
+            torch.cuda.empty_cache()
 
     def index(self, value, start=0, stop=9223372036854775807) -> int:
         """Return first index of value.
@@ -200,13 +209,9 @@ class Item(ListDict):
     def __delitem__(self, i: Union[int, slice]) -> None:
         """ Delete self[key], if self[key] is torch cuda, empty cache
         """
-        _is_torch_cuda = isinstance(self[i], torch.Tensor) and self[i].device != "cpu"
         super().__delitem__(i)
         for key in self.keys:
             self.__dict__[key].__delitem__(i)
-        if _is_torch_cuda:
-            torch.cuda.synchronize()
-            torch.cuda.empty_cache()
 
     def _assert_read_only(self, name):
         if name in [m[0] for m in getmembers(self)]:
@@ -224,28 +229,44 @@ class Item(ListDict):
         """
         return [key for key in self.__dict__  if key[0] == "_"]
 
-    def get_indices(self, key: str, val: str) -> list:
-        """ Returns indices of elements tagged by (key, value) pairs
+    def get_indices(self, **kwargs) -> list:
+        """ Returns all indices of elements tagged by key=[values,..]
+        if more than one key, index lists are interesected
         """
-        assert key in self.keys, f"key '{key}' not found in {self.keys}"
-        return [i for i in range(len(self.__dict__[key])) if self.__dict__[key][i] == val]
+        if not kwargs:
+            return list(range(len(self)))
+        assert all([(k in self.keys) for k in kwargs]), f"not all keys requested {list(kwargs)} in self.keys {self.keys}"
+        indices = []
+        for key, vals in kwargs.items():
+            _idx = []
+            if not isinstance(vals, (list, tuple)):
+                vals = [vals]
+            for val in vals:
+                _idx += [i for i in range(len(self.__dict__[key])) if self.__dict__[key][i] == val]
+            indices.append(_idx)
+        return sorted(list_intersect(*indices))
 
-    def get(self, key: str, val: str) -> list:
-        """ Returns sublist of elements tagged by (key, value) pairs
-        Example
-        if self has a 'tags' key, and self.tags has 'name' entries,
-        >>> self.get("tags", "name") -> [items with .tags == 'name']
+    def get(self, **kwargs) -> list:
+        """ Returns sublist of elements tagged by kwargs by key=[values,..]
+        Examples
+        # if self has a 'tags' key, and self.tags has 'name'  and 'date' entries
+        >>> self.get(tags=['name', 'date'])
+            -> all items with 'tags' 'name' or 'date': ie. union of indices
+
+        # if self also has a 'meta' key and self.meta has entries ['str', 'float']
+        >>> self.get(tags=['name', 'date'], meta=['float'])
+            -> all items with 'tags' 'name' or 'date' that are 'float': intersection of indices
         """
-        return [self[i] for i in self.get_indices(key, val)]
+        return [self[i] for i in self.get_indices(**kwargs)]
 
     def to_torch(self, dtype: Union[torch.dtype, list, tuple]=None, device: Union[torch.device, str]="cpu",
-                 grad: bool=False, include: Union[list, tuple]=None, exclude: Union[list, tuple]=None, **kwargs):
+                 grad: bool=None, include: Union[list, tuple]=None, exclude: Union[list, tuple]=None, **kwargs):
         """ converts all numeric list items to torch except when dtype=[...] is passed or dtype key with value
         not in torch.__dict__, that does not translate to torch.dtype
         Args
             dtype       (str, torch.dtype, list [None]) | .__dict__['dtype'] if 'dtype' in .__dict__
             device      (str, torch.device ['cpu'])
-            grad        [False]
+            grad        [None]
 
             include   list of indices to convert to torch, if None, all
             exclude   list of indices to keep not as torch
@@ -274,7 +295,7 @@ class Item(ListDict):
             try:
                 _item = torch.as_tensor(self[i], dtype=dtype[i], device=device)
                 self[i] = _item
-                if self[i].requires_grad != grad:
+                if grad is not None and  self[i].requires_grad != grad:
                     self[i].requires_grad = grad
             except:
                 pass
@@ -431,17 +452,6 @@ class Item(ListDict):
             assert len(data) == len(self.__dict__[self.keys[0]])
         return Item(data, **self.__dict__)
 
-def tolist(item: Any) -> list:
-    """ converts, casts or encapsulates items in lists
-    """
-    if isinstance(item, list):
-        return item
-    if isinstance(item, (torch.Tensor, np.ndarray)):
-        return item.tolist()
-    if isinstance(item, (tuple, Item)):
-        return list(item)
-    return [item]
-
 
 
 """
@@ -463,3 +473,70 @@ FeaturesDict({
 
 
 """
+
+def _are_ndarray(data: list) -> bool:
+    return all(isinstance(item, np.ndarray) for item in data)
+
+def _are_tensors(data: list) -> bool:
+    return all(isinstance(item, torch.Tensor) for item in data)
+
+def _dtype_eq(data: list) -> bool:
+    return all(item.dtype == data[0].dtype for item in data)
+def _device_eq(data: list) -> bool:
+    return all(item.device == data[0].device for item in data)
+
+def _shape_eq(data: list, omit_index=None) -> bool:
+    if not all(item.ndim == data[0].ndim for item in data):
+        return False
+    shapes = []
+    for i, item in enumerate(data):
+        shape = list(item.shape)
+        if omit_index is not None:
+            shape.pop(omit_index)
+        shapes.append(shape)
+    return all (shape == shapes[0] for shape in shapes)
+
+
+def tensors_are_concatenatable(data: list, index=0) -> bool:
+    """ tensors can be concatenated
+    """
+    return _are_tensors(data) and _dtype_eq(data) and _device_eq(data) and _shape_eq(data, index)
+
+def tensors_are_stackable(data: list) -> bool:
+    """ tensors can be stacked
+    """
+    return tensors_are_concatenatable(data, index=None)
+
+def np_are_concatenatable(data: list, index=0) -> bool:
+    """ numpy arrays can be concatenated
+    """
+    return _are_ndarray(data) and _shape_eq(data, index)
+
+
+def merge_items(items: Union[list, tuple], axis=0) -> Item:
+    """ merges similar Items
+    ndarrays and tensors are merged on axis 0 if equal sizes
+
+    TODO : should positions be stacked? 10 images could be 1,1,2,2 and in next batch, one 1,3,2,2
+        Should indices be stackd or concatenated
+        Should all elements include N?
+        Should Item contain a handler or how elemnts need to be combined merge = [concat, stack, stack]
+        or einsum like subscripts = ['NCHW', 'NMyxhw', 'NMyx...''Ni'
+
+        bboxes: NMyxhw ? NMPO, P: position O: Offset  or NMIO nd NMJO,
+        or NMP(ij)O(ij) and NMP(ij)P(ij)
+        or NMIP(ij) where I woudl be number of coordinates
+
+    """
+    assert all(items[0].keys == it.keys for it in items), "found items with different sets of keys"
+    assert all(len(items[0]) == len(it) for it in items), "found items with different lengths"
+
+    data = []
+    for i in range(len(items[0])): # for each element
+        element = [items[j][i] for j in range(len(items))]
+
+        if tensors_are_concatenatable(element):
+            element = torch.cat(element, axis=axis)
+        data.append(element)
+
+    return Item(data, **items[0].__dict__)

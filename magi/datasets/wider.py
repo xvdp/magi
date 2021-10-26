@@ -38,7 +38,7 @@ class WIDER(Dataset_M):
 
     """
     def __init__(self, data_root :str=None, mode: str="train", names: list=None, name: str="",
-                 dtype: str=None, device: str="cpu", inplace: bool=True, grad: bool=False,
+                 dtype: str=None, device: str="cpu", for_display: bool=False, grad: bool=False,
                  channels: int=3, transforms: TT=None, **kwargs) -> None:
         """
         Args
@@ -54,10 +54,10 @@ class WIDER(Dataset_M):
          'activity", 'wider_id', 'wordnet_id'] # folder name -> activity name, number, and wordnet noun
 
         Args from DatasetMagi
-            name, dtype, device, inplace, grad, channels, transforms
+            name, dtype, device, for_display, grad, channels, transforms
 
         """
-        super().__init__(name=name, dtype=dtype, device=device, inplace=inplace, grad=grad,
+        super().__init__(name=name, dtype=dtype, device=device, for_display=for_display, grad=grad,
                           channels=channels, transforms=transforms)
 
         self.data_root = self.get_dataset_path(data_root)
@@ -88,7 +88,7 @@ class WIDER(Dataset_M):
         index = index if index is not None else torch.randint(len(self), (1,)).item()
         item =  self.samples[index].deepcopy()
 
-        path_idx = item.get_indices("meta", "path")[0]
+        path_idx = item.get_indices(meta="path")[0]
         path_name = item[path_idx] if self.names is None or "name" in self.names else item.pop(path_idx)
         image = self.open(path_name) # open dtype, device and torch transforms from parent class
         item.insert(0, image, meta="data_2d", names="image", dtype=self.dtype)
@@ -126,7 +126,8 @@ class WIDER(Dataset_M):
 
     def _read_annotations(self, image_list_file: list, folder: str) -> list:
         """ returns list of Item
-            Bounding Boxes are grouped per image for augmentation [N,2,2] in format x,y,w,h
+            Bounding Boxes are grouped per image for augmentation [N,M,2,2] in format x,y,w,h
+            where N, is batch size, M, number of faces per image,
 
         with keys for entries
             .names   entry name: image, bbox, name, *attributes, activity, wider_id, wordnet_id
@@ -164,6 +165,7 @@ class WIDER(Dataset_M):
             meta = [meta[i] for i in _keep_indices]
             dtype = [dtype[i] for i in _keep_indices]
 
+        # ['blur', 'expression', 'illumination', 'invalid', 'occlusion', 'pose']
         attrnames = self._names[3:9]
 
         while i < len(text) - 1:
@@ -179,6 +181,7 @@ class WIDER(Dataset_M):
             assert (class_name[0].strip()).isnumeric(), f"<{class_name}> is not numeric!, line {i}"
             class_id = int(class_name[0])               # class_id # e.g. 9
             class_name = "--".join(class_name[1:])      # class_name # e.g. Press_Conference
+            # Item values
             values = [len(images), class_name, class_id, wordnet_id]
 
             # filename
@@ -200,9 +203,15 @@ class WIDER(Dataset_M):
                     attributes.append(face[4:])
                     i += 1
 
-                bbox = np.stack(bbox, axis=0).reshape(-1,2,2)
+                # bbox: N, M, nb_pos, nb_values
+                # nb_pos: 2: pos, offset
+                # nb_values: 2: x,y or w,h
+                bbox = np.stack(bbox, axis=0).reshape(1, -1, 2, 2)
                 attributes = np.stack(attributes, axis=0)
-                attrs = {attrnames[i]:attributes[:,i] for i in range(len(attrnames))}
+                # per attribute: N, M
+                attrs = {attrnames[i]:attributes[:, i].reshape(1,-1) for i in range(len(attrnames))}
+
+                # Item values
                 values = [bbox, name, *attrs.values()] + values
                 if _keep_indices is not None:
                     values = [values[i] for i in _keep_indices]
@@ -210,7 +219,7 @@ class WIDER(Dataset_M):
             else: # images without bboxes
                 values = [name] + values
                 idcs = [i for i in range(len(names)) if names[i] not in ["bbox"]+attrnames]
-                if not len(images):
+                if len(images) == 0:
                     names = [names[i] for i in idcs]
                     meta = [meta[i] for i in idcs]
                     dtype = [dtype[i] for i in idcs]

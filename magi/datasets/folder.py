@@ -57,8 +57,8 @@ class DatasetFolder_M(Dataset_M):
         extensions  (list|str) extensions considered in class folders
         dtype       (str [torch.get_default_dtype()])
         device      (str [cpu])
-        inplace     (bool [True]) # augmenters run in place
-        grad        (bool [False]) # sets inplace to False, for differentiable augments
+        for_display (bool [False]) # augmenters are cloned
+        grad        (bool [False]) # forces for_display to False, for differentiable augments
         channels    (int [3]) | 1,4,None: if None, opens images as stored
         transforms  (torchvision.transforms)
 
@@ -67,10 +67,10 @@ class DatasetFolder_M(Dataset_M):
                  ordered: int=0, names: list=['image', 'target_index'],
                  extensions: LooseList=('.jpg', '.jpeg', '.png', '.ppm', '.bmp', '.pgm', '.tif', '.tiff', '.webp'),
                  dtype: Union[str, torch.dtype]=None, device: Union[str, torch.device]="cpu",
-                 inplace: bool=True, grad: bool=False, channels: int=3, transforms: TT=None):
+                 for_display: bool=False, grad: bool=False, channels: int=3, transforms: TT=None):
 
 
-        super().__init__(name=name, dtype=dtype, device=device, inplace=inplace, grad=grad,
+        super().__init__(name=name, dtype=dtype, device=device, for_display=for_display, grad=grad,
                          channels=channels, transforms=transforms)
 
         data_root = self.get_dataset_path(data_root)
@@ -95,13 +95,16 @@ class DatasetFolder_M(Dataset_M):
 
         self._make_dataset()
 
-    def _define_item(self, names=['image', 'target_index']):
+    def _define_item(self, names=None):
         """
         """
+        if names is None:
+            names = ['image', 'target_index']
         self.keep_names = names.copy() # on __getitem__
         if 'filename' not in names:
             names += ['filename']
 
+        # names, meta, dtype
         _elems = {'image': ['data_2d', self.dtype],
                   'filename': ['path', 'str'],      # filename
                   'image_index': ['id', 'int'],     # image index
@@ -124,7 +127,7 @@ class DatasetFolder_M(Dataset_M):
         for i, key in enumerate(names):
             if key in kwargs:
                 data[i] = kwargs[key]
-        return self.item.get(data)
+        return self.item.spawn(data)
 
     def __getitem__(self, index:str=None) -> Item:
         """
@@ -135,7 +138,7 @@ class DatasetFolder_M(Dataset_M):
         index = index if index is not None else torch.randint(0, len(self), (1,)).item()
         item =  self.samples[index].deepcopy()
 
-        path_idx = item.get_indices("meta", "path")[0]
+        path_idx = item.get_indices(meta="path")[0]
         path_name = item[path_idx] if "filename" in self.keep_names else item.pop(path_idx)
 
         item[0] = self.open(path_name)

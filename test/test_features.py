@@ -2,9 +2,8 @@
 tests to feature classes for dataloaders
 """
 import pytest
-import numpy as np
 import torch
-from magi.features import Item, ListDict, list_flatten
+from magi.features import Item, ListDict
 
 # def test_del_Item():
 #     """ should del Item not delete items it contains as well?"""
@@ -66,9 +65,11 @@ def test_Item():
     assert len(data) == len(data.tags) == len(data.info)
 
     # return subset of elements with key == val, eg. data.tag == "name"
-    subset = data.get("tags", "name")
+    subset = data.get(tags="name")
     assert subset == ["johnson", 20123.1]
 
+    subset = data.get(tags=["name", "class_id"])
+    assert subset == [1, "johnson", 20123.1]
     # extend
     data.extend([1, 3.14], tags=["one", "pi"], info=["int", "float"])
 
@@ -77,6 +78,15 @@ def test_Item():
     assert len(data) == len(data.tags) == len(data.info)
 
 
+def test_Item_get_intersect():
+    item = Item([12,53.5,0.01], names=['eero', 'eero', 'saarinen'], dtype=['int', 'float', 'float'])
+
+    sub = item.get(names='eero', dtype='float')
+    assert sub == [53.5]
+
+    sub = item.get_indices(names='eero', dtype='int')
+    assert sub == [0]
+
 def _get_data_item():
     tensor = torch.randn(1,3,45,45)
     dic = {"a":0, "b":1, "c":2}
@@ -84,7 +94,6 @@ def _get_data_item():
     ls = [12,12,12]
     return Item([tensor, ls, dic, 12., 0, string],
                     tags=["image", "list", "dict", "int", "float", "str"])
-
 
 def test_keep_by_name():
     tensor = torch.randn(1,3,45,45)
@@ -137,18 +146,6 @@ def test_cast_partial_list():
 
     assert len(out) == 2
 
-def test_list_flatten():
-
-    np_rg = np.arange(45,48,1, dtype="int")
-    torch_rn = torch.ones(10, dtype=torch.int)*50
-    nestlist = [[[10,11]]]
-    tup = (9,3,6)
-    out = list_flatten(np_rg, torch_rn, tup, nestlist, 1,2,3)
-    assert len(out) == 21
-
-    out = list_flatten(np_rg, torch_rn, tup, nestlist, 1,2,3, unique=True)
-    assert len(out) == 11
-
 
 def test_keep_none():
     data = _get_data_item()
@@ -157,7 +154,6 @@ def test_keep_none():
     assert len(data) == len(data.tags) == 6
     data.keep()
     assert len(data) == len(data.tags) == 6
-
 
 def test_to_tensor_all():
     data = Item([[[0,1],[0,2]], [0.1,.1,.4], [[[1]],[[.1]]], 12., 0, "asdf"], tags=["image", "list", "dict", "int", "float", "str"])
@@ -212,6 +208,17 @@ def test_to_tensor_cuda_exclude_deepclone():
 
     del data[0]
     assert len(data.tags) == len(data) == 5
+
+
+def test_to_torch_doesnt_break_grad():
+    z = torch.randn([1,3,34,34])
+    z.requires_grad = True
+
+    data = Item([z, 1, [1,2,3], [[34,34],[12,2]] ], names=["tensor", "one", "list2d", "list2d"])
+    data.to_torch()
+    assert data[0].requires_grad, f"expected grad"
+    for i in range(len(data[1:])):
+        assert not data[0].requires_grad, f"expected no grad"
 
 
 def test_Item_reverse():

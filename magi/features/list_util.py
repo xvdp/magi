@@ -8,12 +8,20 @@ List = Union[tuple, list, set]
 _list = (tuple, list, set)
 
 # pylint: disable=no-member
+def is_typed_iterable(*args, typ=(int, float)):
+    """ Returns True if args is either of type typ or a list, tuple or set containing type typ
+    Args
+        *args
+        typ     type or tuple of types
+    """
+    _iterable = (list, tuple, set)
+    return all([isinstance(arg, typ) or (isinstance(arg, _iterable) and all([isinstance(item, typ)
+            for item in arg])) for arg in args])
+
 def is_int_iterable(*args) -> bool:
     """ Returns True if args is either int or a list, tuple or set containing ints
     """
-    _iterable = (list, tuple, set)
-    return all([isinstance(arg, int) or (isinstance(arg, _iterable) and all([isinstance(item, int)
-            for item in arg])) for arg in args])
+    return is_typed_iterable(*args, typ=int)
 
 def list_flatten(*args, sort: bool=False, unique: bool=False, depth: int=None) -> list:
     """ Flattens iterables to a list recursively
@@ -125,4 +133,20 @@ def list_removeall(io_list: list, data: Any) -> None:
     if not _removed and isinstance(data, (list, tuple)):
         for elem in data:
             list_removeall(io_list, elem)
-    
+
+def tolist(item: Any) -> list:
+    """ converts, casts or encapsulates items in lists
+    """
+    if isinstance(item, (list, tuple, range, set)):
+        return list(item)
+    if isinstance(item, (torch.Tensor, np.ndarray)):
+        return item.tolist()
+    return [item]
+
+def list_intersect(*args) -> list:
+    """ Intersects lists
+    """
+    out = args if not args else args[0]
+    for i in range(1, len(args)):
+        out = [o for o in out if o in args[i]]
+    return out

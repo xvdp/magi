@@ -8,7 +8,6 @@ from urllib.parse import urlparse
 import numpy as np
 import torch
 import torchvision.transforms as TT
-from .. import config
 from ..utils import open_img, check_contiguous
 
 # pylint: disable=no-member
@@ -73,10 +72,4 @@ def open_file(file_name: Union[str, list, tuple], dtype: str, device: Union[str,
     #     mem.report(memory=config.MEM, msg=_msg)
     #     config.MEMORY += _size
 
-    if out_type == "torch" and tensor is not None:
-        if config.INPLACE:
-            tensor.unsqueeze_(0)
-        else:
-            tensor = tensor.unsqueeze(0)
-        tensor = check_contiguous(tensor, verbose)
     return tensor

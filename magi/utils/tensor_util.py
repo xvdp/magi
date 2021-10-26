@@ -73,7 +73,6 @@ yxhwa__path(data)
 yxhwa__splitpath
     alias: xywha__splitpath(0
 """
-from typing import Any, NoReturn
 import math
 import logging
 import torch
@@ -82,41 +81,24 @@ from .. import config
 # pylint: disable=no-member
 # pylint: disable=not-callable
 
-def warn_grad_inplace(inplace: bool, grad: bool, in_config: bool=True, verbose: bool=True) -> bool:
-    """ inplace operations cannot be used with backprop
-        if grad: inplace: False
-        Args:
-            inplace
-            grad        check against, overrides inplace
-            in_config   clobbers downstream inplace
-            verbose
-    """
-    if grad and inplace:
-        if verbose:
-            logging.warning(f"{Col.YB}Set config.INPLACE=false for transforms: found tensors requiring grad!{Col.AU}")
-        inplace = False
 
-    if inplace is not None and in_config:
-        config.set_inplace(inplace)
-    return inplace
+# def check_tensor(data, dtype=None, device=None, grad=None):
+#     """ Validates tensor or tensor list dtype, device and or grad
+#         Validates contiguity
+#         Returns size in bytes
+#     """
+#     size = 0
+#     if isinstance(data, (list, tuple)):
+#         for _t in data:
+#             size += check_tensor(_t, dtype=None, device=None, grad=None)
+#         return size
 
-def check_tensor(data, dtype=None, device=None, grad=None):
-    """ Validates tensor or tensor list dtype, device and or grad
-        Validates contiguity
-        Returns size in bytes
-    """
-    size = 0
-    if isinstance(data, (list, tuple)):
-        for _t in data:
-            size += check_tensor(_t, dtype=None, device=None, grad=None)
-        return size
-
-    assert isinstance(data, torch.Tensor), "tensor expected, found '%s'"%str(type(data))
-    size = get_tensor_size(data)
-    assert_tensor_type(data, dtype)
-    assert_tensor_device(data, device)
-    assert_tensor_grad(data, grad)
-    return size
+#     assert isinstance(data, torch.Tensor), "tensor expected, found '%s'"%str(type(data))
+#     size = get_tensor_size(data)
+#     assert_tensor_type(data, dtype)
+#     assert_tensor_device(data, device)
+#     assert_tensor_grad(data, grad)
+#     return size
 
 
 
@@ -186,193 +168,182 @@ def get_tensor_size(data):
         size *= 2
     return size
 
-def check_contiguous(tensor, verbose=False, msg=""):
-    """ Check if thensor is contiguous, if not, force it
-        permutations result in non contiguous tensors which lead to cache misses
-        Args
-            tensor  (torch tensor)
-            verbose (bool) default False
-    """
-    if tensor.is_contiguous():
-        return tensor
-    if verbose:
-        print(msg+"tensor was not continuous, making continuous")
-    return tensor.contiguous()
-
-def is_tensor_list(tensor_list, dtype=None, device=None, inplace=True, msg=""):
-    """ checks tensor_list is tuple or list of tensors of the same dtype.
-        if dtype is given, match that dtype
-        if `tensor_list` is empty or None return None
-    """
-    if not isinstance(tensor_list, (list, tuple)):
-        return False
-
-    _is_tensor_list = False
-    for i, tensor in enumerate(tensor_list):
-        if tensor is None or not tensor:
-            continue
-        elif torch.is_tensor(tensor):
-            _is_tensor_list = True
-            tensor_list[i] = get_tensor(tensor, dtype=dtype, device=device, inplace=inplace, msg="")
-        else:
-            assert not _is_tensor_list, "error, contains tensor and non tensor types {}".format(tensor_list)
-            _is_tensor_list = False
-
-    if _is_tensor_list:
-        return tensor_list
-    return _is_tensor_list
-
-def get_tensor(data, dtype=None, device=None, inplace=True, msg=""):
-    """ return tensor within parameters
-    """
-    if not torch.is_tensor(data):
-        return None
-    if not inplace:
-        data = data.clone().detach()
-    if dtype is not None and data.dtype != dtype:
-        data.to(dtype=dtype)
-    if device is not None:
-        data.to(device=device)
-    return check_contiguous(data, verbose=config.DEBUG, msg=msg)
-
-def check_tensor_list(tensor_list, dtype=None, device=None, inplace=True, msg=""):
-    """ checks tensor_list is tuple or list of tensors of the same dtype.
-        if dtype is given, match that dtype
-        if `tensor_list` is empty or None return None
-    """
-    if tensor_list is None or not tensor_list:
-        return None
-
-    _msg = "expected list of tenors got, '%s'"%type(tensor_list)
-    assert isinstance(tensor_list, (list, tuple)), _msg
-
-    for i, tensor in enumerate(tensor_list):
-        if tensor is None:
-            continue
-        assert torch.is_tensor(tensor), "expected list of tensors, got list of '%s'"%type(tensor)
-        if dtype is None:
-            dtype = tensor.dtype
-        else:
-            _msg = "expected all tensors of same dtype, got '%s' and '%s'"%(dtype, tensor.dtype)
-            assert dtype == tensor.dtype, _msg
-
-        if device is None:
-            device = tensor.device
-        else:
-            _msg = "expected all tensors on same device, got '%s' and '%s'"%(device, tensor.device)
-            assert device == tensor.device, _msg
-
-        if not inplace:
-            tensor_list[i] = tensor_list[i].clone().detach()
-
-    return tensor_list
-
-def refold_tensors(data, types):
-    out = []
-    for i, datum in enumerate(data):
-        if types[i] in ("tensor", "Tensor"):
-            print("type", types[i], i, len(datum), datum )
-            datum = check_contiguous(torch.cat(datum), verbose=config.DEBUG, msg="folding data")
-        out.append(datum)
-    return out
-
-def unfold_tensors(data, msg="", inplace=True):
-    """ return tuple of lists
-            data, types
-    General function to handle transform inputs
-        Unfolds list of tensor, target tensors, labels
-        Checks that tensors are contiguous
-        Args:
-            msg     (str) if not contiuous, append to log
-            inplace (bool [True]) if False, makes a copy
 
 
-        Currently data inputs expected in format
-        tuple/ list
-            tensor:             image tensor
-            target_tensor_list: list of tensors of same dtype and device as tensor
-            labels:             list of dictionaries
-    """
-    types = ["tensor"]
-    if torch.is_tensor(data):
-        data = get_tensor(data, inplace=inplace, msg=msg)
-        return [data], types
+# def is_tensor_list(tensor_list, dtype=None, device=None, inplace=True, msg=""):
+#     """ checks tensor_list is tuple or list of tensors of the same dtype.
+#         if dtype is given, match that dtype
+#         if `tensor_list` is empty or None return None
+#     """
+#     if not isinstance(tensor_list, (list, tuple)):
+#         return False
 
-    if isinstance(data, (tuple, list)):
-        _tensor = get_tensor(data[0], inplace=inplace, msg=msg)
-        assert torch.is_tensor(_tensor), 'img should be Tensor of (3,4,5) dims. Got {}'.format(type(data[0]))
-        data[0] = _tensor
+#     _is_tensor_list = False
+#     for i, tensor in enumerate(tensor_list):
+#         if tensor is None or not tensor:
+#             continue
+#         elif torch.is_tensor(tensor):
+#             _is_tensor_list = True
+#             tensor_list[i] = get_tensor(tensor, dtype=dtype, device=device, inplace=inplace, msg="")
+#         else:
+#             assert not _is_tensor_list, "error, contains tensor and non tensor types {}".format(tensor_list)
+#             _is_tensor_list = False
 
-        if len(data) == 1:
-            return data, types
+#     if _is_tensor_list:
+#         return tensor_list
+#     return _is_tensor_list
 
-        if config.VERBOSE:
-            _dsh = str(data[0].shape)
-            _dtgsh = ""
-            if len(data) > 1 and data[1] is not None:
-                for i in range(len(data[1])):
-                    _dtgsh = _dtgsh +" "+str(data[1][i].shape)
-            print("  : F.unfold_tensors() \n\timg:%s, \n\ttgsh:%s"%(_dsh, _dtgsh))
+# def get_tensor(data, dtype=None, device=None, for_display=False, msg=""):
+#     """ return tensor within parameters
+#     """
+#     if not torch.is_tensor(data):
+#         return None
+#     if for_display:
+#         data = data.clone().detach()
+#     if dtype is not None and data.dtype != dtype:
+#         data.to(dtype=dtype)
+#     if device is not None:
+#         data.to(device=device)
+#     return check_contiguous(data, verbose=config.DEBUG, msg=msg)
 
-        for i, datum in enumerate(data[1:]):
-            _datum = is_tensor_list(datum, inplace=inplace)
-            if _datum:
-                data[i] = _datum
-                types += ["tensor_list"]
-            else:
-                types += [datum.__class__.__name__]
+# def check_tensor_list(tensor_list, dtype=None, device=None, for_display=False, msg=""):
+#     """ checks tensor_list is tuple or list of tensors of the same dtype.
+#         if dtype is given, match that dtype
+#         if `tensor_list` is empty or None return None
+#     """
+#     if tensor_list is None or not tensor_list:
+#         return None
 
-    return data, types
+#     _msg = "expected list of tenors got, '%s'"%type(tensor_list)
+#     assert isinstance(tensor_list, (list, tuple)), _msg
 
-def unfold_data(data, msg="", inplace=True):
-    """General function to handle transform inputs
-        Unfolds list of tensor, target tensors, labels
-        Checks that tensors are contiguous
-        Args:
-            msg     (str) if not contiuous, append to log
-            inplace (bool [True]) if False, makes a copy
+#     for i, tensor in enumerate(tensor_list):
+#         if tensor is None:
+#             continue
+#         assert torch.is_tensor(tensor), "expected list of tensors, got list of '%s'"%type(tensor)
+#         if dtype is None:
+#             dtype = tensor.dtype
+#         else:
+#             _msg = "expected all tensors of same dtype, got '%s' and '%s'"%(dtype, tensor.dtype)
+#             assert dtype == tensor.dtype, _msg
+
+#         if device is None:
+#             device = tensor.device
+#         else:
+#             _msg = "expected all tensors on same device, got '%s' and '%s'"%(device, tensor.device)
+#             assert device == tensor.device, _msg
+
+#         if for_display:
+#             tensor_list[i] = tensor_list[i].clone().detach()
+
+#     return tensor_list
+
+# def refold_tensors(data, types):
+#     out = []
+#     for i, datum in enumerate(data):
+#         if types[i] in ("tensor", "Tensor"):
+#             print("type", types[i], i, len(datum), datum )
+#             datum = check_contiguous(torch.cat(datum), verbose=config.DEBUG, msg="folding data")
+#         out.append(datum)
+#     return out
+
+# def unfold_tensors(data, msg="", inplace=True):
+#     """ return tuple of lists
+#             data, types
+#     General function to handle transform inputs
+#         Unfolds list of tensor, target tensors, labels
+#         Checks that tensors are contiguous
+#         Args:
+#             msg     (str) if not contiuous, append to log
+#             inplace (bool [True]) if False, makes a copy
 
 
-        Currently data inputs expected in format
-        tuple/ list
-            tensor:             image tensor
-            target_tensor_list: list of tensors of same dtype and device as tensor
-            labels:             list of dictionaries
-    """
-    if torch.is_tensor(data):
-        if not inplace:
-            data = data.clone().detach()
-        data = check_contiguous(data, verbose=config.DEBUG, msg=msg)
-        return [data, None, None]
+#         Currently data inputs expected in format
+#         tuple/ list
+#             tensor:             image tensor
+#             target_tensor_list: list of tensors of same dtype and device as tensor
+#             labels:             list of dictionaries
+#     """
+#     types = ["tensor"]
+#     if torch.is_tensor(data):
+#         data = get_tensor(data, inplace=inplace, msg=msg)
+#         return [data], types
 
-    if isinstance(data, (tuple, list)):
-        data = list(data)
-        if not torch.is_tensor(data[0]):
-            raise TypeError('img should be Tensor of (3,4,5) dims. Got {}'.format(type(data[0])))
+#     if isinstance(data, (tuple, list)):
+#         _tensor = get_tensor(data[0], inplace=inplace, msg=msg)
+#         assert torch.is_tensor(_tensor), 'img should be Tensor of (3,4,5) dims. Got {}'.format(type(data[0]))
+#         data[0] = _tensor
 
-        if not inplace:
-            data[0] = data[0].clone().detach()
-        data[0] = check_contiguous(data[0], verbose=config.DEBUG, msg=msg)
+#         if len(data) == 1:
+#             return data, types
 
-        # TODO FIX: this should not return extra Nones
-        if len(data) == 1:
-            return [data[0], None, None]
+#         if config.VERBOSE:
+#             _dsh = str(data[0].shape)
+#             _dtgsh = ""
+#             if len(data) > 1 and data[1] is not None:
+#                 for i in range(len(data[1])):
+#                     _dtgsh = _dtgsh +" "+str(data[1][i].shape)
+#             print("  : F.unfold_tensors() \n\timg:%s, \n\ttgsh:%s"%(_dsh, _dtgsh))
 
-        if config.VERBOSE:
-            _dsh = str(data[0].shape)
-            _dtgsh = ""
-            if len(data) > 1 and data[1] is not None:
-                for i in range(len(data[1])):
-                    _dtgsh = _dtgsh +" "+str(data[1][i].shape)
-            print("  : F.unfold_data() \n\timg:%s, \n\ttgsh:%s"%(_dsh, _dtgsh))
+#         for i, datum in enumerate(data[1:]):
+#             _datum = is_tensor_list(datum, inplace=inplace)
+#             if _datum:
+#                 data[i] = _datum
+#                 types += ["tensor_list"]
+#             else:
+#                 types += [datum.__class__.__name__]
 
-        target = check_tensor_list(data[1], dtype=data[0].dtype, device=data[0].device,
-                                   inplace=inplace, msg="check_annotation type")
+#     return data, types
 
-        if len(data) == 2:
-            return [data[0], target, None]
+# def unfold_data(data, msg="", inplace=True):
+#     """General function to handle transform inputs
+#         Unfolds list of tensor, target tensors, labels
+#         Checks that tensors are contiguous
+#         Args:
+#             msg     (str) if not contiuous, append to log
+#             inplace (bool [True]) if False, makes a copy
 
-        return [data[0], target, data[2]]
+
+#         Currently data inputs expected in format
+#         tuple/ list
+#             tensor:             image tensor
+#             target_tensor_list: list of tensors of same dtype and device as tensor
+#             labels:             list of dictionaries
+#     """
+#     if torch.is_tensor(data):
+#         if not inplace:
+#             data = data.clone().detach()
+#         data = check_contiguous(data, verbose=config.DEBUG, msg=msg)
+#         return [data, None, None]
+
+#     if isinstance(data, (tuple, list)):
+#         data = list(data)
+#         if not torch.is_tensor(data[0]):
+#             raise TypeError('img should be Tensor of (3,4,5) dims. Got {}'.format(type(data[0])))
+
+#         if not inplace:
+#             data[0] = data[0].clone().detach()
+#         data[0] = check_contiguous(data[0], verbose=config.DEBUG, msg=msg)
+
+#         # TODO FIX: this should not return extra Nones
+#         if len(data) == 1:
+#             return [data[0], None, None]
+
+#         if config.VERBOSE:
+#             _dsh = str(data[0].shape)
+#             _dtgsh = ""
+#             if len(data) > 1 and data[1] is not None:
+#                 for i in range(len(data[1])):
+#                     _dtgsh = _dtgsh +" "+str(data[1][i].shape)
+#             print("  : F.unfold_data() \n\timg:%s, \n\ttgsh:%s"%(_dsh, _dtgsh))
+
+#         target = check_tensor_list(data[1], dtype=data[0].dtype, device=data[0].device,
+#                                    inplace=inplace, msg="check_annotation type")
+
+#         if len(data) == 2:
+#             return [data[0], target, None]
+
+#         return [data[0], target, data[2]]
 
 def inspect_data_sample(data):
     if isinstance(data, torch.Tensor):

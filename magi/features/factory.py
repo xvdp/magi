@@ -1,5 +1,9 @@
 """@xvdp
 
+
+TODO Enforce:
+every element has N in front of, even if N is allways 1 - for batching.
+
 """
 from .features import Item
 from ..utils import is_torch_strdtype
@@ -19,7 +23,7 @@ class TypedItemBase:
 
         self.__dict__.update(**kwargs)
 
-    def get(self, data: list=None) -> Item:
+    def spawn(self, data: list=None) -> Item:
         _len = 0
         if self.__dict__:
             keys = [key for key in self.__dict__ if key[0] != "_"]

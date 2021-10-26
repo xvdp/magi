@@ -5,11 +5,18 @@ globals for namespace magi, cacheable
     DTYPE: str      # can be set by transfors.Open(dtype=<>, force_global=True)
                     # calls resolve_dtype(dtype, force_global[False])
 
-    INPLACE: bool   # is set by transfors.Open([inplace= | grad=True])
+    TODO register position semantics per dataset
+    eg - wider; NCHW, n,m,x,y,w,h, -> ,,  t[3],t[2], t[3]delta, t[2]delta
+        path          n,m,x,y, x1,y1, x2,y2...
+
+    TODO make enum of data types instad of strings
+    TODO save profile logs 
+
+    FOR_DISPLAY bool [False]
     BOXMODE: Enum
 
     DEBUG: bool
-    DATAPATHS: dict
+    
 """
 from typing import NoReturn, Union
 import logging
@@ -117,12 +124,19 @@ def resolve_dtype(dtype: Union[str, torch.dtype]=None, force_global: bool=False)
 #
 # global INPLACE: bool
 #
-INPLACE = True
-def set_inplace(inplace):
-    global INPLACE
-    if inplace is not None:
-        INPLACE = bool(inplace)
-    return INPLACE
+# INPLACE = True
+# def set_inplace(inplace):
+#     global INPLACE
+#     if inplace is not None:
+#         INPLACE = bool(inplace)
+#     return INPLACE
+    
+FOR_DISPLAY = False
+def set_for_display(for_display=True):
+    global FOR_DISPLAY
+    if for_display is not None:
+        FOR_DISPLAY = bool(for_display)
+    return FOR_DISPLAY
 #
 # global BOXMODE: Enum
 #
@@ -147,16 +161,16 @@ def set_boxmode(mode, msg=""):
 
 #
 # global DATAPATHS: dict
-#
-DATAPATHS = {}
-def add_datapath(name, path):
-    if osp.isdir(path):
-        DATAPATHS[name] = path
+# #
+# DATAPATHS = {}
+# def add_datapath(name, path):
+#     if osp.isdir(path):
+#         DATAPATHS[name] = path
 
-def get_datapath(name):
-    if name in DATAPATHS:
-        return DATAPATHS[name]
-    return None
+# def get_datapath(name):
+#     if name in DATAPATHS:
+#         return DATAPATHS[name]
+#     return None
 
 #
 # cache dirs
@@ -194,7 +208,7 @@ def save_globals(*paths: str) -> str:
 
     name = osp.join(get_cache_dir_path(*paths), "magi_config.yml")
     dic = globals()
-    obj = ObjDict({d:dic[d] for d in ["DEBUG", "DTYPE", "INPLACE", "BOXMODE", "DATAPATHS"]})
+    obj = ObjDict({d:dic[d] for d in ["DEBUG", "DTYPE", "FOR_DISPLAY", "BOXMODE"]})
     obj.BOXMODE = BOXMODE.name
     obj.to_yaml(name)
     return name

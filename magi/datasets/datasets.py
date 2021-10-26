@@ -28,9 +28,9 @@ class Dataset_M(Dataset[T_co]):
             setting dtype explicitly will set torch default dtype
         device      (str, torch.device ["cpu"]) # will return items with all tensors on the selected device -
             augments on dataloader will be faster but may saturate device. use with caution
-        inplace     (bool [True])   # inplace augments use smaller footprint - but are incompatible with differentiable augmentation.
+        for_display (bool [False])   # clones items for display augments use smaller footprint - but are incompatible with differentiable augmentation.
             since by more useual augmentation on dataloading is not required to be differentiable, by default is set to True
-        grad        (bool [False])  # if set to True, tensors will be opened with grad - `inplace` will be overriden to -> False
+        grad        (bool [False])  # if set to True, tensors will be opened with grad - `for_display` will be overriden to -> False
         channels    (int [3]) |1|3|4|None      # by default Image datasets are RGB, channels==3 will force 3 channels on dsets with inconsistent image channels
             None will open images with the channels they were saved
             # TODO remove to generalize DatasetMagi for data other than images
@@ -38,7 +38,7 @@ class Dataset_M(Dataset[T_co]):
         transforms  (torchvision.transform)
     """
     def __init__(self, name: str="", dtype: Union[str, torch.dtype]=None,
-                 device: Union[str, torch.device]="cpu", inplace: bool=True,
+                 device: Union[str, torch.device]="cpu", for_display: bool=True,
                  grad: bool=False, channels: int=3, transforms: TT=None):
 
         self.name = f"{self.__class__.__name__}_{name}"
@@ -46,7 +46,7 @@ class Dataset_M(Dataset[T_co]):
         self.device = device
 
         self.open = Open(out_type="torch", dtype=self.dtype, device=device, grad=grad,
-                         inplace=inplace, channels=channels, transforms=transforms,
+                         for_display=for_display, channels=channels, transforms=transforms,
                          force_global=True)
 
         self.samples = []
@@ -63,12 +63,11 @@ class Dataset_M(Dataset[T_co]):
         assert path is not None and osp.isdir(path), f"{Col.YB}{self.__class__.__name__} data_root '{path}' not found, pass valid data_root arg{Col.AU}"
         return path
 
-
     def _make_dataset(self, **kwargs) -> None:
         NotImplementedError("Need to be implemented for dataset")
 
     def __repr__(self, exclude_keys: Union[list, tuple]=None) -> str:
-        """ utility, auto __repr__()
+        """ utility, auto __repr__()  # TODO fix, not value default but actual value called
         Args
             exclude_keys    (list, tuple [None])
         """
@@ -98,10 +97,8 @@ class AnnotatedDataset(Dataset[T_co]):
     def __load_annotations__(self, annotation_file) -> None:
         raise NotImplementedError
 
-
     def __getitem__(self, index) -> T_co:
         raise NotImplementedError
-
 
 
 class AnnotatedIterableDataset(IterableDataset[T_co]):

@@ -20,9 +20,9 @@ import torch
 import torchvision.transforms as TT
 from koreto import Col
 from .transforms_base import Transform
-from . import functional_io as Fio
+from . import functional_io as F
 from .. import config
-from ..utils import warn_grad_inplace, warn_np_dtypes
+from ..utils import warn_grad_cloning, warn_np_dtypes
 
 # pylint: disable=no-member
 #
@@ -32,10 +32,8 @@ class Open(Transform):
     """Open a filename as torch tensor, not "properly a transform"
 
     Args:
-        out_type:   (str ["torch"]) | 'numpy']
-        inplace:    (bool [None]) if None uses config.INPLACE
-                                  if (True | False) sets namesace globals -> config.INPLACE
-                    is overriden by grad == True
+        out_type:       (str ["torch"]) | 'numpy']
+
 
     Args modifiable on __call__:
         dtype       (str | torch.dtype [None])
@@ -46,7 +44,11 @@ class Open(Transform):
 
         torch only:
         device      (str ["cpu"]) | "cuda"
-        grad        (bool [False]): if True, forces config.INPLACE == False
+        grad        (bool [False]): if True, forces config.FOR_DISPLAY == False
+        for_display:    (bool [None]) if None uses config.FOR_DISPLAY
+                if (True | False) sets namesace globals -> config.FOR_DISPLAY
+                for_display, clones tensors on every augment
+                is overriden by grad == True
         force_global    (bool [False]) if set to True, changes, namespace globals for DTYPE
 
     Default Return:
@@ -54,8 +56,8 @@ class Open(Transform):
     """
     __type__ = "IO"
     def __init__(self, dtype: Union[str, torch.dtype]=None, device: str="cpu", grad: bool=False,
-                 inplace: bool=None, out_type: str="torch", channels: int=3, transforms: TT=None,
-                 force_global: bool=False) -> Any:
+                 for_display: bool=None, out_type: str="torch", channels: int=3,
+                 transforms: TT=None, force_global: bool=False) -> Any:
 
         # out_type can only be set on __init__
         self.out_type = out_type if out_type in ("torch", "numpy") else "torch"
@@ -68,7 +70,7 @@ class Open(Transform):
         if self.out_type == "torch":
             self.device = self._check_valid({"device": device})["device"]
             self.grad = grad
-            warn_grad_inplace(inplace, grad, in_config=True)
+            warn_grad_cloning(for_display, grad, in_config=True)
 
     def __call__(self, name: Union[str, list, tuple], **kwargs):
         """
@@ -78,14 +80,14 @@ class Open(Transform):
         """
         kw_call, _ = self.update_kwargs(**kwargs)
         kw_call = self._check_valid(kw_call)
-        return Fio.open_file(name, **kw_call)
+        return F.open_file(name, **kw_call)
 
     def _check_valid(self, kwargs):
         # assert on out_type change
         # cant change out_type on __call__ only on init
         assert "out_type" not in kwargs or self.out_type == kwargs["out_type"], f"{Col.YB} Open().__call__() cannot change from '{self.out_type}' to '{kwargs['out_type']}' -> create new Open(out_type='{kwargs['out_type']}'){Col.AU}"
 
-        # validate/warn is float[16,32,64] if torch, or that and uint8 if numpy 
+        # validate/warn is float[16,32,64] if torch, or that and uint8 if numpy
         if "dtype" in kwargs: # -> str
             kwargs["dtype"] = config.resolve_dtype(kwargs["dtype"], self._force_global) if self.out_type == "torch" else warn_np_dtypes(kwargs["dtype"])
 
@@ -98,11 +100,16 @@ class Open(Transform):
         if "device" in kwargs: # -> torch.device
             kwargs["device"] = config.get_valid_device(kwargs["device"])
 
-        if "grad" in kwargs: # -> NoReturn, ensure !grad or inplace != grad
-            warn_grad_inplace(config.INPLACE, kwargs["grad"], in_config=True)
+        if "grad" in kwargs or "for_display" in kwargs: # ensure !grad or for_display != grad
+            for_display = kwargs["for_display"] if "for_display" in kwargs else config.FOR_DISPLAY
+            grad = kwargs["grad"] if "grad" in kwargs else self.grad
+            warn_grad_cloning(for_display, grad, in_config=True)
 
         return kwargs
 
+"""
+self.device = self._check_valid({"device": device})["device"]
+"""
 
 class Show(Transform):
     """
@@ -164,7 +171,6 @@ class Show(Transform):
             kw_call['width'] = kw_['w']
 
         print(kw_call)
-    
 
         # if isinstance(data, np.ndarray):
         #     _div = 1.0 if data.dtype != np.uint8 else 255.

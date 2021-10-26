@@ -19,7 +19,7 @@ def test_widerload():
     W = wider()
 
     item = W.samples[99]
-    name = item.get("names", "name")[0]
+    name = item.get(names=["name"])[0]
     assert osp.isfile(name), f"image not found, {name}"
     assert len(item) == len(W._names[1:])
     assert item.names == W._names[1:]

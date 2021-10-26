@@ -23,13 +23,14 @@ import cv2
 from koreto import Col
 from koreto.utils import ObjDict
 
+from . import check_contiguous
 from .. import config
 
 
 # pylint: disable=no-member
 # pylint: disable=not-callable
 def _image_backends(backend=None, img=None, dtype="float32", channels=3) -> list:
-    """ resolve image handler backend 
+    """ resolve image handler backend
     """
     backends = ["accimage", "PIL", "opencv"]
 
@@ -265,9 +266,12 @@ def open_img(img: str, out_type: str="numpy", dtype: str="float32", grad: bool=N
     assert out is not None, f"could not open img {img} with available _BACKENDS {_backends}"
 
     if out_type == "torch":
+        out.unsqueeze_(0)
+        out = check_contiguous(out, verbose)
+
         if device is not None and out.device != torch.device(device):
             out = out.to(device=device)
-        if grad is not None:
+        if grad is not None and out.requires_grad != grad:
             out.requires_grad = grad
 
     return out

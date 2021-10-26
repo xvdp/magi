@@ -4,6 +4,7 @@ from typing import Union
 import torch
 from torch.utils.data.dataset import Dataset
 from ..features import Item
+from ..utils import warn_grad_cloning
 from ..config import resolve_dtype, get_valid_device
 # pylint: disable=no-member
 # pylint: disable=not-callable
@@ -17,7 +18,7 @@ class Noise(Dataset):
     def __init__(self, noise_type: Union[str, list, tuple]="normal", channels: int=3,
                  size: Union[list, tuple]=(256,256), classes: int=1000, dataset_size: int=128000,
                  dtype: Union[str, torch.dtype]=None, device: Union[str, torch.device]="cpu",
-                 seed: int=0):
+                 seed: int=0, for_display: bool=False, grad: bool=False):
         """
         Args
             noise_type  (str[normal]) uniform, brownian
@@ -27,6 +28,8 @@ class Noise(Dataset):
             size        (int, [1280000]) number of iterations before re-seedes, if None, no seeding
             device
             dtype
+
+            for_display: bool=False
         """
         _valid_noise = ("normal", "uniform")
         if isinstance (noise_type, (list, tuple)):
@@ -51,6 +54,9 @@ class Noise(Dataset):
         self.device = get_valid_device(device)
         self.size = [1, channels, *size]
         self.seed = seed
+
+        self.grad = grad
+        warn_grad_cloning(for_display, grad, in_config=True)
 
         self.__len__ = dataset_size
         self._dims = len(size)
@@ -82,6 +88,8 @@ class Noise(Dataset):
 
         label = torch.randint(len(self.classes), (1,)).item()
         tensor = self._gen_noise(label)
+        if self.grad:
+            tensor.requires_grad = self.grad
         self._counter += 1
 
         return Item([tensor, label], names=['image', 'target_index'],

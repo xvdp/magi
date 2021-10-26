@@ -12,10 +12,9 @@ Or batches with position data associated to those tensors, g.g. bounding boxes o
 
 Annotation Tensor Lists will be transformed by Affine
 
-
 """
 from typing import Union
-from .. import config
+import torch
 
 ###
 # Base classes of Transforms contain class attribute '__type__'to
@@ -36,7 +35,11 @@ class Transform(object):
         for i, (key, value) in enumerate(self.__dict__.items()):
             if exclude_keys is not None and key in exclude_keys:
                 continue
-            value = value if not isinstance(value, str)  else f"'{value}'"
+            if isinstance(value, str):
+                value = f"'{value}'"
+            elif isinstance(value, torch.Tensor):
+                value = f"tensor({value.tolist()})"
+
             sep = "" if not i else ", "
             rep += f"{sep}{key}={value}"
         return rep + ")"
@@ -58,17 +61,3 @@ class Transform(object):
             else:
                 unused[k] = kwargs[k]
         return out, unused
-
-class TransformAppearance(Transform):
-    """ class of Transforms that do not change the size of tensor
-
-    To make appearance transforms differentiable set
-        config.INPLACE or self.inplace == True
-
-    Args:
-        inplace     (bool [config.INPLACE])
-    #super().__init__(inplace=None)
-    """
-    __type__ = "Appearance"
-    def __init__(self, inplace: bool=None) -> None:
-        self.inplace = inplace if inplace is not None else config.INPLACE
