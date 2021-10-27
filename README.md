@@ -17,13 +17,19 @@ Transforms are classes which `__call__()` functionals. Functionals have a main t
 * display - cloning data at every step, allowing to trace and visualize augmentation
 * differentiation - for backpropagation, triggered automatically
 
-Transformation functions to all supported data kinds are suffixed, tagged and handled by the main transform wrapper. For example, on affine transforms bounding boxes or paths on an image need to be transformed along images, or 3d and 2d data on the same elements likewise. New types of data that require transformation need to be tagged and an appropriate functional handler built.
+Functionals for supported data kinds are suffixed, tagged and handled by the main functional transform wrapper in `functional_base`. For example, on affine transforms bounding boxes or paths on an image need to be transformed along images, transform `Rotate()` will call functional `rotate_tensor()` and `rotate_positions()`. New types of data that require transformation need to be tagged and an appropriate functional handler built.
 
-Operations that require backprop can call the typed functionals bypassing typechecking.
+Operations that require back propagation can call the typed functionals bypassing higher level typechecking, e.g. `rotate_tensor()`.
 
-Higher level transforms--handling data loaded from datasets or streams--are typechecked, through a container class handling features.
+Higher level transforms--handling data loaded from datasets or streams--are typechecked, through a container class handling features `Item()`.
 
-## TODO: Direct to More on Augment Transforms md 
+Transformations have class parameter `__type__` that specify to the type of action on the data: `io`, `appearance`, `affine`, 
+
+All transformations can be deterministic and most, for use in augmentation, can be random. All transforms that can be randomized have bernoulli probability parameter `'p' in {0-1}` and their parameters can be normal or uniform distributions.
+
+For a description of different augmentations: [Augumentations](AUGMENT.md)
+<!-- <img src="https://render.githubusercontent.com/render/math?math=0\geq p \geq1" style="background-color:white;padding:5px;"> -->
+
 
 ## 2.Features
 

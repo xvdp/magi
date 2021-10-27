@@ -136,7 +136,7 @@ def normtorange_tensor(x: torch.Tensor, minimum: float, maximum: float,
     return x.sub_(_min).mul_(maximum - minimum).div_(_denom)
 
 ###
-# functional for Sataurate
+# functional for Saturate
 #
 def saturate(data: _TensorItem, sat_a: float, sat_b: float, p: float,
              distribution: str, independent: bool, for_display: bool=False,

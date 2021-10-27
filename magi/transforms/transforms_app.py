@@ -165,12 +165,12 @@ class Saturate(TransformApp):
         Args:
             sat_a:          (float) saturation target
             sat_b:          (float, None) random saturation between _a and _b
-            p:              (float, 1) 0-1 bernoulli probability of action
-            distribution:   (str, default None), None takes distribution mode from config.py
-                                "normal", "uniform", "bernoulli"
+            p:              (float, 1) 0-1 bernoulli probability augmentation occurin
+            distribution:   (str ['normal']), None takes distribution mode from config.py
+                                normal | uniform | bernoulli
     """
-    def __init__(self, sat_a: float, p: float=1, sat_b: float=None, distribution: str=None,
-                 independent: bool=1, for_display: bool=None)-> None:
+    def __init__(self, sat_a: float, p: float=1, sat_b: float=None, distribution: str="normal",
+                 independent: bool=True, for_display: bool=None)-> None:
         super().__init__(for_display=for_display)
 
         self.sat_a = sat_a
