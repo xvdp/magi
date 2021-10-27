@@ -1,7 +1,7 @@
 # Magi
 *Magister Lt. teacher*
 
-A collection of augmentation, training and dataloader wrappers for `pytorch`. These were built before torchvision supported transforms on tensors.
+A collection of augmentation, training and dataloader wrappers for `pytorch`. 
 
 Parts:<br>
 1. Agumentation
@@ -9,21 +9,24 @@ Parts:<br>
 3. Datasets and Dataloaders
 
 
-### 1. Augmentation
-* Based on torchvision transform syntax, exclusively handling tensors.
-* Generalized for 3 different purposes:
-    - dataset load - designed to minimize footprint, operations are where possible, in place
-    - display - cloning data at every step, allowing to trace and visualize augmentation
-    - differentiation - for backpropagation, triggered automatically
+## 1. Augmentation
 
-So as to be able to handle different types of data and multimodal data, augmentation transforms are designed to automatically transform different types of data.
-For instance, position vectors in images require differnt transform than image data, as do 3d position vectors, or camera rays. 
-Every transform that requires different operations has extensions specifically designed for the data type.
+Augumentation transforms are based on the design of torchvision, located in folder `magi/transforms/`.
+Transforms are classes which `__call__()` functionals. Functionals have a main transform wrapper generalized for 3 different purposes:
+* dataset load - designed to minimize footprint, operations are where possible, in place
+* display - cloning data at every step, allowing to trace and visualize augmentation
+* differentiation - for backpropagation, triggered automatically
 
-In order to handle data types and possible transforms that are open set, transforms and features are typed, new types can be registered.
+Transformation functions to all supported data kinds are suffixed, tagged and handled by the main transform wrapper. For example, on affine transforms bounding boxes or paths on an image need to be transformed along images, or 3d and 2d data on the same elements likewise. New types of data that require transformation need to be tagged and an appropriate functional handler built.
 
+Operations that require backprop can call the typed functionals bypassing typechecking.
 
-### 2.Features
+Higher level transforms--handling data loaded from datasets or streams--are typechecked, through a container class handling features.
+
+## TODO: Direct to More on Augment Transforms md 
+
+## 2.Features
+
 Dataset features are an openended problem, a dataset may provide data with class names, regression targets, or a collection of data of different modes. <br>
 To address this openendednes this adds an addressable list, `class Item(list)` a feature that is both a list and can contain tags to aid the handling of data.<br>
 Item can be cast to `list(Item)` or be used to carry any kind of structured data.

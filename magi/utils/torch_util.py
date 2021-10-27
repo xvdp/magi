@@ -88,7 +88,10 @@ def reduce_to(x: Union[_torchable], tensor:torch.Tensor, axis: int=1) -> torch.T
         shape = [1]*tensor.ndim
 
         if isinstance(x, _vector):
-            assert x.ndim <= tensor.ndim, f"reductions not defined extra dim {x.ndim} > {tensor.ndim}"
+            if x.ndim > tensor.ndim and all(n==1 for n in x.shape[tensor.ndim:]):
+                x = x.view(*[d for d in x.shape[:tensor.ndim]])
+
+            assert x.ndim <= tensor.ndim, f"Cannot reduce non empty dimensions {x.shape}[:{tensor.ndim}]"
             x = torch.as_tensor(x, dtype=tensor.dtype)
             if axis >= x.ndim:
                 x = x.view(*[1]*(axis - x.ndim + 1), *x.shape)

@@ -3,17 +3,15 @@
 import pytest
 import torch
 from magi.transforms import Normalize, UnNormalize, NormToRange
-from magi.datasets import Noise, ImageNet
+from magi.datasets import Noise, ImageNet, WIDER
 from magi import config
 
 # pylint: disable=no-member
 IMAGENET_ROOT = config.load_dataset_path("ImageNet")
 WIDER_ROOT = config.load_dataset_path("ImageNet")
 
-def get_dset_item(dset=None):
-    dsets = p[]
-
-
+# def get_dset_item(dset=None):
+#     dsets = [ImageNet, WIDER, Noise]
 
 def test_normalize():
 

@@ -69,7 +69,7 @@ class Transform(object):
 
         if 'for_display' in  out and out['for_display']  is None:
             out['for_display'] = config.FOR_DISPLAY
-        
+
         return out, unused
 
 class TransformApp(Transform):
