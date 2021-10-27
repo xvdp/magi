@@ -217,8 +217,8 @@ def test_to_torch_doesnt_break_grad():
     data = Item([z, 1, [1,2,3], [[34,34],[12,2]] ], names=["tensor", "one", "list2d", "list2d"])
     data.to_torch()
     assert data[0].requires_grad, f"expected grad"
-    for i in range(len(data[1:])):
-        assert not data[0].requires_grad, f"expected no grad"
+    for i in range(1, len(data[1:])):
+        assert not data[i].requires_grad, f"expected no grad on item {i} {data[i].shape} "
 
 
 def test_Item_reverse():

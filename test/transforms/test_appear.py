@@ -2,12 +2,18 @@
 """
 import pytest
 import torch
-from magi.transforms import Normalize
+from magi.transforms import Normalize, UnNormalize, NormToRange
 from magi.datasets import Noise, ImageNet
 from magi import config
 
 # pylint: disable=no-member
 IMAGENET_ROOT = config.load_dataset_path("ImageNet")
+WIDER_ROOT = config.load_dataset_path("ImageNet")
+
+def get_dset_item(dset=None):
+    dsets = p[]
+
+
 
 def test_normalize():
 
@@ -31,21 +37,12 @@ def test_normalize():
 
 
 def test_norm_grad():
-    # del config
-    # del Noise
-    # del ImageNet
-    # del Normalize
-    # from magi import config
-    # from magi.datasets import Noise, ImageNet
-    # from magi.transforms import Normalize
-
-    print(list(globals().keys()))
-
-
-
+    # check default options, config.FOR_DISPLAY is False
     N = Normalize()
-    assert N.for_display == config.FOR_DISPLAY == False
+    assert N.for_display is None
+    assert config.FOR_DISPLAY == False
     
+    # check that setting grad, overrids config.FOR_DISPLAY
     if IMAGENET_ROOT is not None:
         dset = ImageNet(mode='val', grad=True, for_display=True)
     else:
@@ -68,7 +65,8 @@ def test_not_for_display():
     x = N(d)
     assert torch.all(torch.eq(d[0], x[0])).item(), f"norm not for display should clobber input"
 
-def test_for_display():
+def test_for_display_local():
+    # check that passing 'for_display' on calls without gradient overrides for display but does not set Config
     dset = ImageNet(mode='val', for_display=False)
     N = Normalize(for_display=True)
     assert not config.FOR_DISPLAY, f"transform should NOT change FOR_DISPLAY"
@@ -76,6 +74,18 @@ def test_for_display():
     d = dset.__getitem__()
     x = N(d)
     assert not torch.all(torch.eq(d[0], x[0])).item(), f"norm for display should NOT clobber input"
+
+def test_block_clone_grad():
+    dset = ImageNet(mode='val', for_display=True)
+    assert config.FOR_DISPLAY, f"FOR_DISPLAY should be False, globally"
+    N = Normalize()
+    d = dset.__getitem__()
+    d[0].requires_grad =True
+    x = N(d)
+    assert not config.FOR_DISPLAY, f"FOR_DISPLAY should be False, globally, "
+
+
+# TODO NormToRange- 0,1, -4,10
 
 # def test_for_display_grad():
 #     dset = ImageNet(mode='val', for_display=True)

@@ -15,7 +15,7 @@ Annotation Tensor Lists will be transformed by Affine
 """
 from typing import Union
 import torch
-
+from .. import config
 ###
 # Base classes of Transforms contain class attribute '__type__'to
 # Transform             (object)    + update_kwargs, auto __repr__
@@ -25,6 +25,12 @@ class Transform(object):
     """ base transform class
     """
     __type__ = "Transform"
+
+    def __init__(self, for_display: bool=None) -> None:
+        """ for_display: True will clone data on this transform
+            to set globally config.set_for_display(bool) or set in datasets
+        """
+        self.for_display = for_display
 
     def __repr__(self, exclude_keys: Union[list, tuple]=None) -> str:
         """ utility, auto __repr__()
@@ -60,4 +66,13 @@ class Transform(object):
                 out[k] = kwargs[k]
             else:
                 unused[k] = kwargs[k]
+
+        if 'for_display' in  out and out['for_display']  is None:
+            out['for_display'] = config.FOR_DISPLAY
+        
         return out, unused
+
+class TransformApp(Transform):
+    """ base transform class
+    """
+    __type__ = "Appearance"

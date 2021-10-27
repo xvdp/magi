@@ -21,7 +21,7 @@ from inspect import getmembers
 from copy import deepcopy
 import numpy as np
 import torch
-from ..utils import torch_dtype
+from ..utils import torch_dtype, logtensor, logndarray
 from .list_util import is_int_iterable, list_flatten, list_modulo, list_intersect
 
 _T = TypeVar('_T')
@@ -299,6 +299,7 @@ class Item(ListDict):
                     self[i].requires_grad = grad
             except:
                 pass
+        return self
 
     def to(self, **kwargs):
         """ wrapper to torch.to() for all tensor elements
@@ -310,6 +311,7 @@ class Item(ListDict):
         for i, _ in enumerate(self):
             if isinstance(self[i], torch.Tensor):
                 self[i] = self[i].to(**kwargs)
+        return self
 
     def keep(self, *args, **kwargs) -> None:
         """ Removes all public keys and items not tagged to keep
@@ -540,3 +542,17 @@ def merge_items(items: Union[list, tuple], axis=0) -> Item:
         data.append(element)
 
     return Item(data, **items[0].__dict__)
+
+
+def logitem(data: Item, msg=""):
+    print(f"Item().keys {data.keys}")
+    for i in range(len(data)):
+        _keys = {k:data.__dict__[k][i] for k in data.__dict__}
+        msg = f" [{i}] {_keys} ".replace(": ", ":")
+
+        if isinstance(data[i], (torch.Tensor, np.ndarray)):
+            logtensor(data[i], msg=msg)
+        elif isinstance(data[i], np.ndarray):
+            logndarray(data[i], msg=msg)
+        else:
+            print(f"{msg} {data[i]}")

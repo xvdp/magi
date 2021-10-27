@@ -5,7 +5,7 @@ from typing import Union
 import logging
 import torch
 import numpy as np
-from koreto import Col
+from koreto import Col, sround
 from .. import config
 
 _torchable = (int, float, list, tuple, np.ndarray, torch.Tensor)
@@ -17,10 +17,18 @@ def logtensor(x, msg=""):
     """ log tensor properties, for debug"""
     assert isinstance(x, torch.Tensor)
     _dtype = f" {x.dtype.__repr__().split('.')[-1]}"
-    _min = f" min {x.min().item()}"
-    _max = f" max {x.max().item()}"
-    _mean = f" max {x.mean().item()}"
+    _min = f" min {sround(x.min().item(), 2)}"
+    _max = f" max {sround(x.max().item(), 2)}"
+    _mean = f" mean {sround(x.mean().item(), 2)}"
     print(f"{msg}{tuple(x.shape)} {_dtype} {x.device.type} grad {x.requires_grad},{_mean},{_min},{_max}")
+
+def logndarray(x, msg=""):
+    """ log tensor properties, for debug"""
+    assert isinstance(x, np.ndarray)
+    _min = f" min {sround(x.min().item(), 2)}"
+    _max = f" max {sround(x.max().item(), 2)}"
+    _mean = f" mean {sround(x.mean().item(), 2)}"
+    print(f"{msg}{tuple(x.shape)},{_mean},{_min},{_max}")
 
 
 def check_contiguous(tensor, verbose=False, msg=""):
@@ -53,6 +61,13 @@ def warn_grad_cloning(for_display: bool, grad: bool, in_config: bool=True, verbo
     if for_display is not None and in_config:
         config.set_for_display(for_display)
     return for_display
+
+def ensure_broadcastable(x: Union[_torchable], tensor: torch.Tensor) -> torch.Tensor:
+    """ match ndim, device, dtype of tensor"""
+    if not torch.is_tensor(x) or x.ndim != tensor.ndim or x.dtype != tensor.dtype or x.device != tensor.device:
+        x = reduce_to(x, tensor)
+    return x
+
 
 def reduce_to(x: Union[_torchable], tensor:torch.Tensor, axis: int=1) -> torch.Tensor:
     """ Convert 'x' to tensor with same dtype, device, ndim as tensor

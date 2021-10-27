@@ -3,119 +3,193 @@ funcional appearance
     functions that only modify content values of data
     without changing data size or relative location of values
 """
-from typing import Union
+from typing import Union, Callable
+import logging
 import numpy as np
 import torch
-from koreto import memory_profiler
-from torch.distributed.distributed_c10d import broadcast
+from koreto import memory_profiler, Col
+
 from .. import config
-from ..utils import reduce_to
+from ..utils import ensure_broadcastable
 from ..features import Item
-_torchable = (int, float, list, tuple, np.ndarray, torch.Tensor)
+_tensorish = (int, float, list, tuple, np.ndarray, torch.Tensor)
 _vector = (np.ndarray, torch.Tensor)
-
+_Tensorish = Union[_tensorish]
+_TensorItem = Union[torch.Tensor, Item]
 # pylint: disable=no-member
-# def normalize(data: Union[torch.Tensor, list], mean: Union[_torchable], std: Union[_torchable],
-#                inplace: int=0, axis: int=1) -> Union[torch.Tensor, Item]:
-#     """Normalize a tensor image with mean and standard deviation.
-#     Args:
-#         data    (Item or Tensor)
 
-#         mean    (_torchable): per channel or image mean
-#         std     (_torchable): per channel or image std
-
-#         inplace (bool[False]) default from Normalize [None] defers to config.INPLACE [True]
-#                 if used with grad needs be False
-#         axis    (int [1]) axis over which mean & std are broadcast if (mean|std) are 1d
-
-#     Returns:
-#         list [norm tensor, data[1], data[2]]
-#     """
-#     if isinstance(data, torch.Tensor):
-#         data = _normalize(data, mean, std, inplace, axis)
-
-#     elif isinstance(data, Item): # requires Item to be labeled with meta= data_<>d keys
-#         for i in data.get_indices(meta=["data_1d", "data_2d", "data_3d"]):
-#             data[i] = _normalize(data[i], mean, std, inplace, axis)
-
-#     elif isinstance(data, list):
-#         for i in [i for i in range(len(data)) if data[i].is_floating_point() and data[i].ndim >=3]:
-#             data[i] = _normalize(data[i], mean, std, inplace, axis)
-
-#     return data
-
-# def _normalize(x: torch.Tensor, mean: Union[_torchable], std: Union[_torchable],
-#                inplace: bool=False, axis: int=1) -> torch.Tensor:
-#     """ Robust normalization, mean and std can be any dim and shape
-#     Args
-#         x   tensor to normalize
-#     """
-#     mean = reduce_to(mean, x, axis=axis)
-#     std = reduce_to(std, x, axis=axis)
-#     if inplace or (inplace is None and config.INPLACE):
-#         return x.sub_(mean).div_(std)
-
-def normalize(data: Union[_torchable], mean: Union[_torchable], std: Union[_torchable], for_display: bool=False,
-              profile: bool=False) -> Union[_torchable]:
-    """  normalize item or tensor
-    """
-    if not profile and isinstance(data, Item):
-        return normalize_item(data, mean, std, for_display)
-    if not profile and isinstance(data, torch.Tensor):
-        return normalize_tensor(data, mean, std)
-
-    if profile and isinstance(data, Item):
-        return _normalize_item_profile(data, mean, std, for_display)
-    if profile and isinstance(data, torch.Tensor):
-        return _normalize_tensor_profile(data, mean, std)
-
-def normalize_item(data: Item, mean: Union[_torchable], std: Union[_torchable], for_display: bool=False) -> Item:
-    """
+###
+# functional generic transform
+#
+def transform(data: _TensorItem, func: Callable, meta_keys: list=None,
+              for_display: bool=False, **kwargs)-> _TensorItem:
+    """ Apply generic functional transform
     Args
-        data        Item
-        mean, std.  tensors, appropriately broadcasted, same dtype and device
-        for_display bool
+        data        Item or tensor
+        func        function applied to tensor
+
+    Args called if data is Item
+        for_display bool [False], if True, CLONE
+        meta_keys   list of meta keys to be transformed
+
+    Args to transform function
+        **kwargs    function arguments
     """
-    _normalizable = ['data_1d', 'data_2d', 'data_3d']
-    indices = data.get_indices(meta=_normalizable)
-    assert indices, f"normalzion of Item requires Item.meta in {_normalizable}"
+    # Apply transform to tensor
+    if isinstance(data, torch.Tensor):
+        return func(data, **kwargs)
 
-    if not for_display:
-        for i in indices:
-            data[i] = normalize_tensor(data[i], mean, std)
-        return data
+    # Clone if requested
+    if for_display:
+        if any(t.requires_grad for t in data if isinstance(t, torch.Tensor)):
+            logging.warning(f"{Col.YB}Attemtpt to clone with grad on {func.__name__} stopped, config.FOR_DISPLAY -> False {Col.AU}")
+            config.set_for_display(False)
+        else:
+            data = data.deepclone()
 
-    out = data.deepclone()
+    # Apply transform to Item indices
+    indices = data.get_indices(meta=meta_keys)
+    assert indices, f"Cannot Transform, missing Item.meta keys in {meta_keys}"
     for i in indices:
-        out[i] = normalize_tensor(out[i], mean, std)
-    return out
+        data[i] = func(data[i], **kwargs)
+    return data
 
-def _match_tensor(x: Union[_torchable], tensor: torch.Tensor) -> torch.Tensor:
-    """ match ndim, device, dtype of tensor"""
-    if not torch.is_tensor(x) or x.ndim != tensor.ndim or x.dtype != tensor.dtype or x.device != tensor.device:
-        x = reduce_to(x, tensor)
-    return x
+@memory_profiler
+def transform_profile(data: _TensorItem, func: Callable, meta_keys: list=None,
+              for_display: bool=False, **kwargs)-> _TensorItem:
+    """ nvml, torch.cuda.stats, torch.profiler digest on transform """
+    return transform(data=data, func=func, meta_keys=meta_keys, for_display=for_display, **kwargs)
 
-def normalize_tensor(x: torch.Tensor, mean: Union[_torchable], std: Union[_torchable]) -> torch.Tensor:
+###
+# functional for Normalize or MeanCenter
+#
+def normalize(data: _TensorItem, mean: _Tensorish, std: _Tensorish, for_display: bool=False,
+              profile: bool=False)-> _TensorItem:
+    """  normalize item or tensor | profile memory optional
+    Args
+        data        tensor | Item
+        mean        tensor, iterable convertible to tensor
+        std         tensor, iterable convertible to tensor
+        for_display bool [False] CLONES Item ( not applied if data is tensor )
+        profile     bool [False] wraps transform in profiler
+    """
+    _transform = transform_profile if profile else transform
+    return _transform(data=data, func=normalize_tensor, for_display=for_display,
+                      meta_keys=['data_1d', 'data_2d', 'data_3d'], mean=mean, std=std)
+
+def normalize_tensor(x: torch.Tensor, mean: _Tensorish, std: _Tensorish)-> torch.Tensor:
     """
     Args
-        x           data tensor
+        x           tensor
         mean, std.  appropriately broadcasted tensors, same dtype and device
     """
-    mean = _match_tensor(mean, x)
-    std = _match_tensor(std, x)
+    mean = ensure_broadcastable(mean, x)
+    std = ensure_broadcastable(std, x)
     if x.requires_grad:
         return x.sub(mean).div(std)
     return x.sub_(mean).div_(std)
 
-@memory_profiler
-def _normalize_item_profile(data: Item, mean: Union[_torchable], std: Union[_torchable], for_display: bool=False) -> Item:
-    return normalize_item(data, mean, std, for_display)
-@memory_profiler
-def _normalize_tensor_profile(data: torch.Tensor, mean: Union[_torchable], std: Union[_torchable]) -> torch.Tensor:
-    return normalize_tensor(data, mean, std)
+###
+# functional for UnNormalize or UnMeanCenter
+#
+def unnormalize(data: _TensorItem, mean: _Tensorish, std: _Tensorish,
+                for_display: bool=False, profile: bool=False)-> _TensorItem:
+    """  unnormalize item or tensor | profile memory optional """
 
-# other overly compact ways of normalizing
-# def norm(x, mean, std, inplace):
-#     return getattr(getattr(x, f'sub{"_"*inplace}')(mean), f'div{"_"*inplace}')(std)
-# norml = lambda x, mean=0.5, std= 0.23, p="": getattr(getattr(x, f'sub{p}')(mean), f'div{p}')(std)
+    _transform = transform_profile if profile else transform
+    return _transform(data=data, func=unnormalize_tensor, for_display=for_display,
+                      meta_keys=['data_1d', 'data_2d', 'data_3d'], mean=mean, std=std)
+
+def unnormalize_tensor(x: torch.Tensor, mean: _Tensorish, std: _Tensorish,
+                       clip: bool=False)-> torch.Tensor:
+    """
+    Args
+        x           tensor
+        mean, std.  appropriately broadcasted tensors, same dtype and device
+    """
+    mean = ensure_broadcastable(mean, x)
+    std = ensure_broadcastable(std, x)
+    if x.requires_grad: # not im place
+        x = x.mul(std).add(mean)
+        if clip:
+            x = x.clamp(0., 1.)
+    else:
+        x.mul_(std).add_(mean)
+        if clip:
+            x.clamp_(0., 1.)
+    return x
+
+###
+# functional for NormToRange
+#
+def normtorange(data: _TensorItem, minimum: Union[int, float]=0., maximum: Union[int, float]=1.,
+                excess_only: bool=False, independent: bool=True, per_channel: bool=False,
+                for_display: bool=False, profile: bool=False)-> _TensorItem:
+    """  unnormalize item or tensor | profile memory optional
+    Args
+        data        Item | tensor
+        minimum     int | float [0.]
+        maximum     int | float [1.]
+        excess_only bool [False] - if minimum < data.min() and maximum > data.max(), dont modify
+        independent bool [True]  - normalize each batch item separately
+        per_channel bool [False] - normalize each channel separately
+    """
+    _transform = transform_profile if profile else transform
+    return _transform(data=data, func=normtorange_tensor, for_display=for_display,
+                      meta_keys=['data_1d', 'data_2d', 'data_3d'], minimum=minimum, maximum=maximum,
+                      excess_only=excess_only, independent=independent, per_channel=per_channel)
+
+def normtorange_tensor(x: torch.Tensor, minimum: float, maximum: float,
+                       excess_only: bool, independent: bool, per_channel: bool)-> torch.Tensor:
+    """
+    Args
+        x           tensor
+        independent     normalize each batch element on its own range
+    """
+    if independent:
+        for i, _ in enumerate(x):
+            x[i:i+1] = normtorange_tensor(x[i:i+1], minimum=minimum, maximum=maximum,
+                                          excess_only=excess_only, independent=False,
+                                          per_channel=per_channel)
+        return x
+
+    _to = {"dtype": x.dtype, "device": x.device}
+    if per_channel:
+        _sh = [1]*x.ndim
+        _sh[1] = x.shape[1]
+        _min = torch.tensor([x[:, i, ...].min() for i in range(_sh[1])], **_to).view(_sh)
+        _max = torch.tensor([x[:, i, ...].max() for i in range(_sh[1])], **_to).view(_sh)
+
+    _min = x.min()
+    _max = x.max()
+
+    if not excess_only or x.min().item() < minimum or x.max().item() > maximum:
+        _denom = _max.sub(_min).add(minimum)
+        _deneq0 = (_denom == 0).to(dtype=_denom.dtype)
+        _denom.add_(_deneq0) # NaN prevent if denom == 0: denom = 1
+
+    if x.requires_grad:
+        return x.sub(_min).mul(maximum - minimum).div(_denom)
+    return x.sub_(_min).mul_(maximum - minimum).div_(_denom)
+
+###
+# functional for Sataurate
+#
+def saturate(data: _TensorItem, sat_a: float, sat_b: float, p: float,
+             distribution: str, independent: bool, for_display: bool=False,
+             profile: bool=False)->  _TensorItem:
+    """
+    """
+    _transform = transform_profile if profile else transform
+    return _transform(data=data, func=saturate_tensor, for_display=for_display,
+                      meta_keys=['data_1d', 'data_2d', 'data_3d'], sat_a=sat_a,
+                      sat_b=sat_b, p=p, distribution=distribution, independent=independent)
+
+def saturate_tensor(x: torch.Tensor, sat_a: float, sat_b: float, p: float,
+                    distribution: str, independent: bool)-> torch.Tensor:
+    pass
+        # self.sat_a = sat_a
+        # self.sat_b = sat_b
+        # self.p = p
+        # self.distribution = distribution
+        # self.independent = independent
