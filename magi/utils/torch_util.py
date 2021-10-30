@@ -62,24 +62,30 @@ def warn_grad_cloning(for_display: bool, grad: bool, in_config: bool=True, verbo
         config.set_for_display(for_display)
     return for_display
 
-def ensure_broadcastable(x: Union[_torchable], tensor: torch.Tensor) -> torch.Tensor:
-    """ match ndim, device, dtype of tensor"""
-    if not torch.is_tensor(x) or x.ndim != tensor.ndim or x.dtype != tensor.dtype or x.device != tensor.device:
-        x = reduce_to(x, tensor)
-    return x
+# def ensure_broadcastable(x: Union[_torchable], tensor: torch.Tensor) -> torch.Tensor:
+#     """ match ndim, device, dtype of tensor"""
+#     if not torch.is_tensor(x) or x.ndim != tensor.ndim or x.dtype != tensor.dtype or x.device != tensor.device:
+#         x = reduce_to(x, tensor)
+#     return x
 
-
-def reduce_to(x: Union[_torchable], tensor:torch.Tensor, axis: int=1) -> torch.Tensor:
+def get_broadcastable(x: Union[_torchable], tensor:torch.Tensor, axis: int=1) -> torch.Tensor:
     """ Convert 'x' to tensor with same dtype, device, ndim as tensor
     with x.shape[i] == tensor.shape[i] or axis i reduced to 1 by mean
-    
+
     Args
-        x       (list, tuple, int, float, ndarray torch.Tensor)
+        x       (list, tuple, int, float, ndarray torch.Tensor, Randomize)
+            if ndim == 1 and len() > 1 and len() == len(tensor.shape[axis]
+
+        if x is Randomize class, sample new value
+
         tensor  torch.Tensor) tensor to match
             if tensor or ndarray, axis size equal x or reduced to mean
 
         axis    (int [min(1 | tensor.ndim-1)]) only necessary for broadcasing where x.ndim <= axis
     """
+    if torch.is_tensor(x) and x.ndim == tensor.ndim and x.dtype == tensor.dtype and x.device == tensor.device:
+        return x
+
     assert isinstance(x, _torchable), f"invalid type {type(x)}"
     assert tensor.is_floating_point(), f"only floating_point tensors, found {tensor.dtype}"
     with torch.no_grad():
@@ -107,7 +113,13 @@ def reduce_to(x: Union[_torchable], tensor:torch.Tensor, axis: int=1) -> torch.T
             assert all(isinstance(i, (int,float)) for i in x), f"only 1d lists permitted, found {x}"
             shape[axis] = len(x)
 
-        return torch.as_tensor(x).view(*shape).to(dtype=tensor.dtype, device=tensor.device)
+        x = torch.as_tensor(x).view(*shape).to(dtype=tensor.dtype)
+        # before returning ensure no dimensions are unboadcastable, if so, average
+        _bad_dims = [i for i in range(len(x.shape)) if x.shape[i] not in (1, tensor.shape[i])]
+        if _bad_dims:
+            x = x.mean(_bad_dims, keepdims=True)
+        return x.to(device=tensor.device)
+
 
 def is_torch_strdtype(dtype: str) -> bool:
     """ torch dtypes from torch.__dict__"""
@@ -152,7 +164,7 @@ def torch_dtype(dtype: Union[str, torch.dtype, list, tuple], force_default: bool
             raise NotImplementedError(f"dtype {dtype} not recognized")
     return dtype
 
-def dtype_as_str(dtype: Union[str, torch.dtype, np.dtype])-> str:
+def str_dtype(dtype: Union[str, torch.dtype, np.dtype])-> str:
     """ convert torch or numpy dtype to str
     """
     if isinstance(dtype, str) and is_torch_strdtype(dtype):

@@ -11,7 +11,7 @@ import torchvision.transforms as TT
 from koreto import Col
 
 from ..transforms import Open
-from ..utils import dtype_as_str
+from ..utils import str_dtype
 from ..config import load_dataset_path, write_dataset_path
 
 T_co = TypeVar('T_co', covariant=True)
@@ -42,7 +42,7 @@ class Dataset_M(Dataset[T_co]):
                  grad: bool=False, channels: int=3, transforms: TT=None):
 
         self.name = f"{self.__class__.__name__}_{name}"
-        self.dtype = dtype_as_str(dtype if dtype is not None else torch.get_default_dtype())
+        self.dtype = str_dtype(dtype if dtype is not None else torch.get_default_dtype())
         self.device = device
 
         self.open = Open(out_type="torch", dtype=self.dtype, device=device, grad=grad,

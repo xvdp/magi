@@ -25,7 +25,6 @@ def open_file(file_name: Union[str, list, tuple], dtype: str, device: Union[str,
             out_type    (str ['torch']) | numpy
             channels    (int [None: same as input]) | 1,3,4
             transforms  (torchvision.transforms)
-
     """
     if isinstance(file_name, (list, tuple)):
         batchlist = []

@@ -1,7 +1,7 @@
 # Magi
 *Magister Lt. teacher*
 
-A collection of augmentation, training and dataloader wrappers for `pytorch`. 
+A collection of augmentation, training and dataloader wrappers for `pytorch`.
 
 Parts:<br>
 1. Agumentation
@@ -11,11 +11,17 @@ Parts:<br>
 
 ## 1. Augmentation
 
-Augumentation transforms are based on the design of torchvision, located in folder `magi/transforms/`.
+Augumentation transforms nomenclature is based on the design of torchvision, located in folder `magi/transforms/`, with the intent of generalizing uses.
+
 Transforms are classes which `__call__()` functionals. Functionals have a main transform wrapper generalized for 3 different purposes:
 * dataset load - designed to minimize footprint, operations are where possible, in place
 * display - cloning data at every step, allowing to trace and visualize augmentation
 * differentiation - for backpropagation, triggered automatically
+
+
+Transformations have class parameter `__type__` that specify to the type of action on the data: `IO`, `Appearance`, `Affine`. Even though IO 'transforms' cannot be strictly considered as transforms, they are built with the same syntax.
+
+All transformations on data (other than IO), can be constant and most, can be randomized. Randomization can be triggered both at the Transformation or at the functional level, leveraging class `Randomize(a,b,p,distribution)` built over `torch.distributions`. Randomization is driven by bernoulli probability, over batch, item and or channel. 
 
 Functionals for supported data kinds are suffixed, tagged and handled by the main functional transform wrapper in `functional_base`. For example, on affine transforms bounding boxes or paths on an image need to be transformed along images, transform `Rotate()` will call functional `rotate_tensor()` and `rotate_positions()`. New types of data that require transformation need to be tagged and an appropriate functional handler built.
 
@@ -23,14 +29,20 @@ Operations that require back propagation can call the typed functionals bypassin
 
 Higher level transforms--handling data loaded from datasets or streams--are typechecked, through a container class handling features `Item()`.
 
-Transformations have class parameter `__type__` that specify to the type of action on the data: `io`, `appearance`, `affine`, 
-
-All transformations can be deterministic and most, for use in augmentation, can be random. All transforms that can be randomized have bernoulli probability parameter `'p' in {0-1}` and their parameters can be normal or uniform distributions.
 
 For a description of different augmentations: [Augumentations](AUGMENT.md)
 <!-- <img src="https://render.githubusercontent.com/render/math?math=0\geq p \geq1" style="background-color:white;padding:5px;"> -->
 
-
+# TODO
+Centralize dtype and device resolution
+```
+config
+    resolve_dtype(dtype)
+    get_valid_device(device)
+torch_util
+    torch_dtype
+    str_dtype
+```
 ## 2.Features
 
 Dataset features are an openended problem, a dataset may provide data with class names, regression targets, or a collection of data of different modes. <br>

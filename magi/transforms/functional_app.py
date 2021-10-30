@@ -14,9 +14,10 @@ from typing import Union
 import numpy as np
 import torch
 
-from ..utils import ensure_broadcastable
 from ..features import Item
-from .functional_base import transform, transform_profile
+from ..utils import to_saturation, to_grayscale
+from .functional_base import transform, transform_profile, get_value
+from .transforms_base import Randomize
 _tensorish = (int, float, list, tuple, np.ndarray, torch.Tensor)
 _Tensorish = Union[_tensorish]
 _TensorItem = Union[torch.Tensor, Item]
@@ -46,8 +47,8 @@ def normalize_tensor(x: torch.Tensor, mean: _Tensorish, std: _Tensorish)-> torch
         x           tensor
         mean, std.  appropriately broadcasted tensors, same dtype and device
     """
-    mean = ensure_broadcastable(mean, x)
-    std = ensure_broadcastable(std, x)
+    mean = get_value(mean, x)
+    std = get_value(std, x)
     if x.requires_grad:
         return x.sub(mean).div(std)
     return x.sub_(mean).div_(std)
@@ -70,8 +71,8 @@ def unnormalize_tensor(x: torch.Tensor, mean: _Tensorish, std: _Tensorish,
         x           tensor
         mean, std.  appropriately broadcasted tensors, same dtype and device
     """
-    mean = ensure_broadcastable(mean, x)
-    std = ensure_broadcastable(std, x)
+    mean = get_value(mean, x)
+    std = get_value(std, x)
     if x.requires_grad: # not im place
         x = x.mul(std).add(mean)
         if clip:
@@ -138,19 +139,48 @@ def normtorange_tensor(x: torch.Tensor, minimum: float, maximum: float,
 ###
 # functional for Saturate
 #
-def saturate(data: _TensorItem, sat_a: float, sat_b: float, p: float,
-             distribution: str, independent: bool, for_display: bool=False,
-             profile: bool=False)->  _TensorItem:
+def saturate(data: _TensorItem, sat_a: float=0, sat_b: float=None, p: float=1,
+             distribution: str="Uniform", per_sample: bool=True, per_channel: bool=False,
+             for_display: bool=False, profile: bool=False)->  _TensorItem:
     """
+    Saturates tensor: by default desaturates
+    Args
+
+        data    tensor_item
+        self.sat_a = sat_a
+        self.sat_b = sat_b
+        self.p = p
+        self.distribution = distribution
+        self.per_sample = per_sample
+        self.per_channel = per_channel
+
+                if distribution is not None:
+            self.distribution = Randomize(sat_a, sat_b, p, distribution=distribution, per_sample=per_sample)
+
+
     """
+    # dtype = data.dtype i f 
+    # sampler = Randomize(a=sat_a, b=sat_b, p=p, distribution=distribution, per_channel=per_channel, per_sample=per_sample)
+
     _transform = transform_profile if profile else transform
     return _transform(data=data, func=saturate_tensor, for_display=for_display,
-                      meta_keys=['data_1d', 'data_2d', 'data_3d'], sat_a=sat_a,
-                      sat_b=sat_b, p=p, distribution=distribution, independent=independent)
+                      meta_keys=['data_1d', 'data_2d', 'data_3d'],
+                      sat_a=sat_a, sat_b=sat_b, p=p)
 
-def saturate_tensor(x: torch.Tensor, sat_a: float, sat_b: float, p: float,
-                    distribution: str, independent: bool)-> torch.Tensor:
-    pass
+def saturate_tensor(x: torch.Tensor, sat_a: float, sat_b: float, p: float)-> torch.Tensor:
+
+    if sat_b is None:
+        if not sat_a: # grayscale with bernoulli prob p
+            return torch.lerp(to_grayscale(x), x, p)
+        # saturation sat_a with probaility p
+        return torch.lerp(to_saturation(x, sat_a), x, p)
+
+# def random_saturate_tensor()
+    #alpha:
+
+    #return to_saturation(x, )
+    # if single value. blend between self and sat_a
+    #pass
         # self.sat_a = sat_a
         # self.sat_b = sat_b
         # self.p = p
