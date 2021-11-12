@@ -1,7 +1,10 @@
 # Magi
 *Magister Lt. teacher*
 
-A collection of augmentation, training and dataloader wrappers for `pytorch`.
+A collection of augmentation, training and dataloader wrappers for `pytorch`. This set of tools was built to address the fact that world data is multimodal and chaotic, one may want to pass images alongside with annotations, sounds or graphs into a learner, or a collection of data may require to share parameters across multiple models, or a model may require benchmarking across augmentation ranges, or augmentation could require exploration of different probability distributions. Each of the cases mentioned requires bootstrapping existing pipleines which eventually became untennable.
+
+To handle mulitmodal data, a feature class `Item` was designed on top of a list, with per item tags, interpretable by augmentation to --for instance-- rotate a 3d point cloud, or position parameters along side an image. To handle distributions, every augmentation parameter can be constant or randomized by a distribution in the exponential family. To handle compactness, operations without gradients are in place by default, but data can be generically cloned or profiled. To handle benchmarking augmentation can be passed to dataloaders as dictionaries with ranges. Transforms are differentiable.
+
 
 Parts:<br>
 1. Agumentation

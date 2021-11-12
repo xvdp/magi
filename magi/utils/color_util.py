@@ -5,14 +5,14 @@ from typing import Union
 import logging
 import numpy as np
 import torch
-from .. import config
+from koreto import Col
 from .torch_util import get_broadcastable
 
 _torchable = (int, float, list, tuple, np.ndarray, torch.Tensor)
 
 
 # pylint: disable=no-member
-def to_saturation(x: torch.Tensor, saturation: Union[_torchable], axis: int=1) -> torch.Tensor:
+def to_saturation(x: torch.Tensor, saturation: Union[_torchable], axis: int = 1) -> torch.Tensor:
     """ lerps grayscale(x) with x by alpha
     Args
         x           tensor to saturate
@@ -20,19 +20,23 @@ def to_saturation(x: torch.Tensor, saturation: Union[_torchable], axis: int=1) -
         axis        int [1] channels axis
     """
     if not isinstance(saturation, (int, float)):
-        saturation = get_broadcastable(saturation, x)
+        saturation = get_broadcastable(saturation, other=x, axis=axis)
+
+    if not torch.any(saturation):
+        return to_grayscale(x, axis=axis)
     return torch.lerp(to_grayscale(x, axis=axis), x, saturation)
 
-def to_grayscale(x: torch.Tensor, axis :int=1) -> torch.Tensor:
+def to_grayscale(x: torch.Tensor, axis :int = 1) -> torch.Tensor:
     """ RGB to Grayscale
     x       torch.tensor
     axis    (int [1]) channels axis
     """
     shape = x.shape
     if shape[axis] == 3:
-        x = x.mul(get_broadcastable([0.2989, 0.5870, 0.1140], x)).sum(axis=axis, keepdims=True)
+        x = x.mul(get_broadcastable([0.2989, 0.5870, 0.1140], other=x,
+                                    axis=axis)).sum(axis=axis, keepdims=True)
     else:
-        logging.warning(f" expected rgb tensor, found shape {tuple(x.shape)}, averaging...")
+        logging.warning(f"{Col.YB}expected RGB tensor over axis {axis}, found shape {tuple(x.shape)}, averaging...{Col.AU}")
         x = x.mean(axis=axis, keepdims=True)
 
     return x.broadcast_to(shape)
@@ -65,7 +69,7 @@ def to_grayscale(x: torch.Tensor, axis :int=1) -> torch.Tensor:
 #     return lab.like(size=size, distribution=distribution)
 
 # class Lab:
-#     """ Full (14M) ImageNet Color distributions precomuted 
+#     """ Full (14M) ImageNet Color distributions precomuted
 #     hname = '/media/z/Elements/data/ImageNet/stats.h5'
 #     with h5py.File(hname) as stats:
 #         lab_means = stats['lab_means'][:]

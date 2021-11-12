@@ -83,6 +83,7 @@ def test_block_clone_grad():
     assert not config.FOR_DISPLAY, f"FOR_DISPLAY should be False, globally, "
 
 
+#S(NormToRange(for_display=True, minimum=1, maximum=0, p=0.5)(m4, profile=True))
 # TODO NormToRange- 0,1, -4,10
 
 # def test_for_display_grad():

@@ -11,9 +11,14 @@ import torchvision.transforms as TT
 from ..utils import open_img, check_contiguous
 
 # pylint: disable=no-member
-def open_file(file_name: Union[str, list, tuple], dtype: str, device: Union[str, torch.device]="cpu",
-              grad: bool=False, out_type: str="torch", channels: int=None,
-              transforms: TT=None, verbose: bool=False) -> Union[torch.Tensor, np.ndarray, list]:
+def open_file(file_name: Union[str, list, tuple],
+              dtype: str,
+              device: Union[str, torch.device] = "cpu",
+              grad: bool = False,
+              out_type: str = "torch",
+              channels: int = None,
+              transforms: TT = None,
+              verbose: bool = False) -> Union[torch.Tensor, np.ndarray, list]:
     """
     Args    file_name   (str, list), file, url or list of files and urls
                 if list, and images same size, concatente, numpy or tensor, else list

@@ -14,7 +14,7 @@ Annotation Tensor Lists will be transformed by Affine
 
 
 """
-from typing import Any, Union
+from typing import Any, Union, Optional
 import logging
 import torch
 import torchvision.transforms as TT
@@ -55,9 +55,15 @@ class Open(Transform):
         Tensor, float32, NCHW, 3 channles, no_grad, cpu
     """
     __type__ = "IO"
-    def __init__(self, dtype: Union[str, torch.dtype]=None, device: str="cpu", grad: bool=False,
-                 for_display: bool=None, out_type: str="torch", channels: int=3,
-                 transforms: TT=None, force_global: bool=False) -> Any:
+    def __init__(self,
+                 dtype: Union[None, str, torch.dtype] = None,
+                 device: str = "cpu",
+                 grad: bool = False,
+                 for_display: Optional[bool] = None,
+                 out_type: str = "torch",
+                 channels: int = 3,
+                 transforms: TT = None,
+                 force_global: bool = False) -> None:
 
         # out_type can only be set on __init__
         self.out_type = out_type if out_type in ("torch", "numpy") else "torch"
@@ -78,7 +84,7 @@ class Open(Transform):
             name        (str, list),  valid file name(s)
             **kwargs    arguments from __init__()  except out_type
         """
-        kw_call, _ = self.update_kwargs(**kwargs)
+        kw_call = self.update_kwargs(**kwargs)
         kw_call = self._check_valid(kw_call)
         return F.open_file(name, **kw_call)
 

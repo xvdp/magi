@@ -1,24 +1,39 @@
-"""@ xvdp
+"""@xvdp
 
-globals for namespace magi, cacheable
+Globals for namespace magi, cacheable to:
+global MAGI_CACHE_DIR
+>>> config/get_cache_dir_path()
+'~/.cache/magi'
 
-    DTYPE: str      # can be set by transfors.Open(dtype=<>, force_global=True)
-                    # calls resolve_dtype(dtype, force_global[False])
+with resolution order
+    os.environ['MAGI_CACHE_DIR']
+    osp.join(os.environ['HOME'], '.cache', 'magi')
+    osp.join(os.environ['USERPROFILE'], '.cache', 'magi')
+    osp.join(tempfile.gettempdir(), '.cache', 'magi')
 
-    TODO register position semantics per dataset
-    eg - wider; NCHW, n,m,x,y,w,h, -> ,,  t[3],t[2], t[3]delta, t[2]delta
-        path          n,m,x,y, x1,y1, x2,y2...
-
-    TODO make enum of data types instad of strings
-    TODO save profile logs 
-
-    FOR_DISPLAY bool [False]
-    BOXMODE: Enum
-
-    DEBUG: bool
+Subset of globals can be manually saved or loaded
+    DTYPE: str      # set by transform.Open(dtype=<>, force_global=True)
+        alias to get and set torch_default_dtype
+    # TODO cleanup dtype and device, set and get torch default instead of global
     
+    FOR_DISPLAY: bool = False # if true clones augment operations
+    BOXMODE: Enum
+    DEBUG: bool # TODO remove
+
+>>> load_globals()
+>>> save_globals()
+
+
+Dataset Paths:
+When datasets.Dataset_M is leveraged, dataset paths are cached and loaded from file:
+    osp.join(MAGI_CACHE_DIR, "datasets.yml")
+Written to cache on  <MyDataset>(Dataset_M)(data_root=<path>)
+Loaded from cache on <MyDataset>(Dataset_M)(data_root=None)
+On every load or write, missing paths are culled, paths are sorted by disk read speed.
+    # TODO backup old paths 
+
 """
-from typing import NoReturn, Union
+from typing import  Union
 import logging
 import os
 import os.path as osp
@@ -30,14 +45,13 @@ from koreto import ObjDict, Col
 # pylint: disable=no-member
 # pylint: disable=not-callable
 
-
 DEBUG = False
 
 DEVICES = ["cpu"]
-if torch.cuda.is_available:
-    DEVICES = ["cpu", "cuda"]
+if torch.cuda.is_available():
+    DEVICES = ["cpu", "cuda", *(f"cuda:{i}" for i in range(torch.cuda.device_count()))]
 
-def device_valid(device:Union[torch.device, str]) -> bool:
+def device_valid(device: Union[torch.device, str]) -> bool:
     """ check if device is valid (cpu or gpu)
     Args
         device  (str, torch.device)
@@ -55,7 +69,7 @@ def device_valid(device:Union[torch.device, str]) -> bool:
     # this does not check for XLA or other devides
     return out
 
-def get_valid_device(device:Union[torch.device, str]) -> torch.device:
+def get_valid_device(device: Union[None, torch.device, str] = 'cpu') -> torch.device:
     """ returns highest available device
     e.g
     if device == 'cuda:3' but only 3 gpus available
@@ -67,17 +81,18 @@ def get_valid_device(device:Union[torch.device, str]) -> torch.device:
     does not check
     xpu, mkldnn, opengl, opencl, ideep, hip, msnpu, mlc, xla, vulkan, meta, hpu
     """
-    device = torch.device(device)
+
+    device = torch.device(device = device if device is not None else 'cpu')
     if device.type == "cuda":
         if not torch.cuda.is_available:
             logging.warning("'cuda' not Available, defaulting to 'cpu'")
         else:
-            device_count =  torch.cuda.device_count()
-            if device.index is None or device.index < device_count:
+            devices =  torch.cuda.device_count()
+            if device.index is None or device.index < devices:
                 return device
 
-            logging.warning(f"cuda device.index={device.index}, not available, defaulting to index={device_count-1}")
-            return torch.device("cuda", index=device_count-1)
+            logging.warning(f"cuda:{device.index}, not available, defaulting tocuda:{devices-1}")
+            return torch.device("cuda", index=devices-1)
 
     return torch.device("cpu")
 
@@ -86,7 +101,7 @@ def get_valid_device(device:Union[torch.device, str]) -> torch.device:
 #
 DTYPE = torch.get_default_dtype().__repr__().split(".")[1]
 
-def resolve_dtype(dtype: Union[str, torch.dtype]=None, force_global: bool=False) -> str:
+def resolve_dtype(dtype: Union[None, str, torch.dtype] = None, force_global: bool = False) -> str:
     """ default dtype can only be floating point
     set default dtype and save to a global that could be cached if needed
 
@@ -121,18 +136,8 @@ def resolve_dtype(dtype: Union[str, torch.dtype]=None, force_global: bool=False)
 
     return dtype
 
-#
-# global INPLACE: bool
-#
-# INPLACE = True
-# def set_inplace(inplace):
-#     global INPLACE
-#     if inplace is not None:
-#         INPLACE = bool(inplace)
-#     return INPLACE
-    
 FOR_DISPLAY = False
-def set_for_display(for_display=True):
+def set_for_display(for_display: bool = True) -> bool:
     global FOR_DISPLAY
     if for_display is not None:
         FOR_DISPLAY = bool(for_display)
@@ -159,21 +164,10 @@ def set_boxmode(mode, msg=""):
         BOXMODE = BoxMode(mode)
     return BOXMODE
 
-#
-# global DATAPATHS: dict
-# #
-# DATAPATHS = {}
-# def add_datapath(name, path):
-#     if osp.isdir(path):
-#         DATAPATHS[name] = path
 
-# def get_datapath(name):
-#     if name in DATAPATHS:
-#         return DATAPATHS[name]
-#     return None
-
+###
 #
-# cache dirs
+# Main cache dir
 #
 MAGI_CACHE_DIR = None
 
@@ -205,7 +199,6 @@ def get_cache_dir_path(*paths: str) -> str:
 def save_globals(*paths: str) -> str:
     """
     """
-
     name = osp.join(get_cache_dir_path(*paths), "magi_config.yml")
     dic = globals()
     obj = ObjDict({d:dic[d] for d in ["DEBUG", "DTYPE", "FOR_DISPLAY", "BOXMODE"]})

@@ -2,7 +2,7 @@
 
 Image opening utilities
 """
-from typing import Union
+from typing import Union, Optional
 from inspect import currentframe, getframeinfo
 import warnings
 import logging
@@ -14,7 +14,6 @@ from urllib.parse import urlparse
 import requests
 import numpy as np
 import torch
-import torchvision.transforms as TT
 
 import accimage # fastest for jpg->torch
 from PIL import Image
@@ -26,10 +25,17 @@ from koreto.utils import ObjDict
 from . import check_contiguous
 from .. import config
 
+# torchvision transforms are Modules
+_TT = torch.nn.modules.module.Module
+_Vector = Union[torch.Tensor, np.ndarray]
+
 
 # pylint: disable=no-member
 # pylint: disable=not-callable
-def _image_backends(backend=None, img=None, dtype="float32", channels=3) -> list:
+def _image_backends(backend: Optional[str] = None,
+                    img: Optional[str] = None,
+                    dtype: str = "float32",
+                    channels: int = 3) -> list:
     """ resolve image handler backend
     """
     backends = ["accimage", "PIL", "opencv"]
@@ -43,8 +49,11 @@ def _image_backends(backend=None, img=None, dtype="float32", channels=3) -> list
         _backends.remove("accimage")
     return _backends
 
-def open_acc(img: str, dtype: str="float32", out_type: str="numpy", channels: int=None,
-             transforms: TT=None) -> Union[torch.Tensor, np.ndarray, None]:
+def open_acc(img: str,
+             dtype: str = "float32",
+             out_type: str = "numpy",
+             channels: Optional[int] = None,
+             transforms: Optional[_TT] = None) -> Optional[_Vector]:
     """ opens image using accimage
     faster for jpg which is stored same as torch tensors, CHW
     Args
@@ -74,8 +83,11 @@ def open_acc(img: str, dtype: str="float32", out_type: str="numpy", channels: in
 
     return None
 
-def open_pil(img: str, dtype: str="float32", out_type: str="numpy", channels: int=None,
-             transforms: TT=None) -> Union[torch.Tensor, np.ndarray, None]:
+def open_pil(img: str,
+             dtype: str = "float32",
+             out_type: str = "numpy",
+             channels: Optional[int] = None,
+             transforms: Optional[_TT] = None) -> Optional[_Vector]:
     """ opens image using PIL, returns np.ndarray or torch.tensor
     Args
         img         (str) image path
@@ -103,8 +115,11 @@ def open_pil(img: str, dtype: str="float32", out_type: str="numpy", channels: in
 
     return None
 
-def open_cv(img: str, dtype: str="float32", out_type: str="numpy", channels: int=None,
-            transforms:TT=None) -> Union[torch.Tensor, np.ndarray, None]:
+def open_cv(img: str,
+             dtype: str = "float32",
+             out_type: str = "numpy",
+             channels: Optional[int] = None,
+             transforms: Optional[_TT] = None) -> Optional[_Vector]:
     """ opens image using opencv, returns np.ndarray or torch.tensor
     Args
         img         (str) image path
@@ -129,7 +144,7 @@ def open_cv(img: str, dtype: str="float32", out_type: str="numpy", channels: int
 
     return None
 
-def _to_torch(data: np.ndarray, permute: Union[list, tuple]= None) -> torch.Tensor:
+def _to_torch(data: np.ndarray, permute: Union[None, list, tuple] = None) -> torch.Tensor:
     """"""
     data = torch.from_numpy(data)
     if permute is not None:
@@ -141,7 +156,7 @@ def _assert_dtype(dtype: str, out_type: str) -> None:
                     'torch':["float16", "float32", "float64"]}[out_type]
     assert dtype in _valid_dypes, f"{Col.RB} only {_valid_dypes} supported, found: {dtype}"
 
-def to_np_dtype(out: np.ndarray, dtype:str, out_type="torch") -> np.ndarray:
+def to_np_dtype(out: np.ndarray, dtype: str, out_type: str = "torch") -> np.ndarray:
     """ type conversion
     """
     _assert_dtype(dtype, out_type)
@@ -167,7 +182,7 @@ def to_np_dtype(out: np.ndarray, dtype:str, out_type="torch") -> np.ndarray:
         out = (out*(2**31-1)).astype(dtype)
     return out
 
-def get_cache_name(url, cache_dir=None) -> str:
+def get_cache_name(url: str, cache_dir: Optional[str] = None) -> str:
     """ caches names url images to local file.
     """
     if cache_dir is None:
@@ -180,7 +195,7 @@ def get_cache_name(url, cache_dir=None) -> str:
         fname += _ext
     return osp.join(cache_dir, fname)
 
-def cache_image(img: Image, url: str, cache_name: str=None) -> Union[None, str]:
+def cache_image(img: Image, url: str, cache_name: Optional[str] = None) -> Optional[str]:
     """ Saves image, and url address dict to cache folder
     Args
         img         (PIL.Image)
@@ -200,8 +215,12 @@ def cache_image(img: Image, url: str, cache_name: str=None) -> Union[None, str]:
     img.save(cache_name)
     return cache_name
 
-def open_url(url:str, cache_name:str=None, dtype: str="float32", out_type: str="torch",
-             channels: int=None, transforms: TT=None) -> Union[torch.Tensor, np.ndarray, None]:
+def open_url(url: str,
+             cache_name: Optional[str] = None,
+             dtype: str = "float32",
+             out_type: str = "torch",
+             channels: Optional[int] = None,
+             transforms: Optional[_TT] = None) -> Optional[_Vector]:
     """ Opens url image and caches to 'cache_name' if not None
     Args
         url         (str) valid url
@@ -232,9 +251,15 @@ def open_url(url:str, cache_name:str=None, dtype: str="float32", out_type: str="
 
     return None
 
-def open_img(img: str, out_type: str="numpy", dtype: str="float32", grad: bool=None,
-             device: Union[str, torch.device]=None, backend: str=None, transforms: TT=None,
-             channels: int=None, verbose: bool=True) -> Union[torch.Tensor, np.ndarray, None]:
+def open_img(img: str,
+             out_type: str = "numpy",
+             dtype: str = "float32",
+             grad: Optional[bool] = None,
+             device: Union[None, str, torch.device] = None,
+             backend: Optional[str] = None,
+             transforms: Optional[_TT] = None,
+             channels: Optional[int] = None,
+             verbose: bool = True) -> Optional[_Vector]:
     """ image open
         accimage:   faster for jpg RGB
         PIL
@@ -276,20 +301,21 @@ def open_img(img: str, out_type: str="numpy", dtype: str="float32", grad: bool=N
 
     return out
 
-def torch_fix_channels(tensor: torch.Tensor, channels: int, dim: int=1) -> torch.Tensor:
+def torch_fix_channels(x: torch.Tensor, channels: int, dim: int = 1) -> torch.Tensor:
     """ extend or contract dimensions to match channels
     """
-    _shape = tensor.shape
-    _channels = _shape[1]
-    if _channels == channels:
-        return tensor
+    _shape = x.shape
+    _ch = _shape[1]
+    if _ch == channels:
+        return x
     elif channels == 1:
-        return grayscale(tensor)
+        return grayscale(x)
     else:
-        out = torch.cat([tensor]+[torch.unbind(tensor, dim)[0].unsqueeze(dim)]*(channels - _channels), dim=dim)
+        out = torch.cat([x]+[torch.unbind(x, dim)[0].unsqueeze(dim)]*(channels-_ch), dim=dim)
     return out
 
-def np_fix_channels(img: np.ndarray, channels: int, fillvalue: Union[int,float]=None) -> np.ndarray:
+def np_fix_channels(img: np.ndarray, channels: int, fillvalue: Union[None, int,float] = None
+) -> np.ndarray:
     """
     validate image has spec'd channels, clip channels or add channels
     all arrays returned as a shape length 3 array
@@ -331,7 +357,7 @@ def np_fix_channels(img: np.ndarray, channels: int, fillvalue: Union[int,float]=
         return np.concatenate((img, np.zeros(img[:, :, :1].shape, dtype=img.dtype)), axis=2)
 
 
-def grayscale(img: Union[torch.Tensor, np.ndarray]) ->  Union[torch.Tensor, np.ndarray]:
+def grayscale(img: _Vector) ->  _Vector:
     """ convert 3 or 4 channel image to grayscale
     using RGB* [0.2989, 0.5870, 0.1140]
     """
@@ -340,7 +366,7 @@ def grayscale(img: Union[torch.Tensor, np.ndarray]) ->  Union[torch.Tensor, np.n
     else:
         return _grayscale_np(img)
 
-def _grayscale_assert(img: Union[torch.Tensor, np.ndarray], channel_index=2, dims=3) -> bool:
+def _grayscale_assert(img: _Vector, channel_index: int = 2, dims: int = 3) -> bool:
     _msg = f"{Col.RB}expecting rgb or rgba, not {str(img.shape)}{Col.AU}"
     assert len(img.shape) == dims and img.shape[channel_index] in [3, 4], _msg
     return True
@@ -372,8 +398,12 @@ def _grayscale_torch(img: torch.Tensor) -> torch.Tensor:
         tog = torch.tensor([[[0.2989], [0.5870], [0.1140]]], dtype=img.dtype, device=img.device)
         return torch.clamp((img[:, :3, ...].reshape(n, 3, -1)*tog).sum(axis=1, keepdims=True), 0,1).reshape(n, 1, h, w)
 
-def save_img(data: np.ndarray, name: str, ext: str=".png", folder: str=".", conflict: int=1,
-             bpp: int=8) -> bool:
+def save_img(data: np.ndarray,
+             name: str,
+             ext: str = ".png",
+             folder: str = ".",
+             conflict: int = 1,
+             bpp: int = 8) -> bool:
     """
     save image out with  PIL (or cv2 if bpp==16)
     """
@@ -394,7 +424,7 @@ def save_img(data: np.ndarray, name: str, ext: str=".png", folder: str=".", conf
 
     return True
 
-def _resolve_path(name: str, ext: str=".png", folder: str=".", conflict: int=1) -> str:
+def _resolve_path(name: str, ext: str = ".png", folder: str = ".", conflict: int = 1) -> str:
     """
     """
     folder = osp.abspath(osp.expanduser(folder))

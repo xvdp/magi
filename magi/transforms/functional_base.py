@@ -4,7 +4,8 @@ transform() main functional wraps other functionals handing input type, cloning
 transform_profile() lightweight memory and call stack debugger
 
 """
-from typing import Union, Callable, Any
+from typing import Union, Callable, Optional
+import inspect
 import logging
 import numpy as np
 import torch
@@ -13,10 +14,10 @@ from koreto import memory_profiler, Col
 from .. import config
 from ..features import Item
 from ..utils import get_broadcastable
+from .transforms_rnd import Distribution, Probs
 
-from .transforms_base import Randomize
 _tensoritem = (torch.Tensor, Item)
-_torchable = (int, float, list, tuple, np.ndarray, torch.Tensor)
+_torchable = (int, float, list, tuple, np.ndarray, torch.Tensor, Distribution)
 _vector = (np.ndarray, torch.Tensor)
 
 #pylint: disable=no-member
@@ -24,8 +25,10 @@ _vector = (np.ndarray, torch.Tensor)
 ###
 # functional generic transform
 #
-def transform(data: Union[_tensoritem], func: Callable, meta_keys: list=None,
-              for_display: bool=False, **kwargs)-> Union[_tensoritem]:
+def transform(data: Union[_tensoritem],
+              func: Callable,
+              meta_keys: Optional[list] = None,
+              for_display: bool = False, **kwargs) -> Union[_tensoritem]:
     """ Apply generic functional transform
     Args
         data        Item or tensor
@@ -58,34 +61,90 @@ def transform(data: Union[_tensoritem], func: Callable, meta_keys: list=None,
     return data
 
 @memory_profiler
-def transform_profile(data: Union[_tensoritem], func: Callable, meta_keys: list=None,
-              for_display: bool=False, **kwargs)-> Union[_tensoritem]:
+def transform_profile(data: Union[_tensoritem],
+                      func: Callable,
+                      meta_keys: Optional[list] = None,
+                      for_display: bool = False, **kwargs) -> Union[_tensoritem]:
     """ nvml, torch.cuda.stats, torch.profiler digest on transform """
+
+    kw = {}
+    for key, value in kwargs.items():
+        if isinstance(value, torch.Tensor):
+            kw[key] = f"tensor({value.tolist()})" if value.numel() < 12 else f"{value.shape})"
+        elif isinstance(value, Item):
+            kw[key] = f"Item({value[0].shape}...{len(value)})"
+        else:
+            kw[key] = value
+    print(f"\n@memory_profiler\n{func.__name__}({kw})".replace(" ", ""))
+
     return transform(data=data, func=func, meta_keys=meta_keys, for_display=for_display, **kwargs)
 
+def get_bernoulli_like(x: Union[_torchable], like: Union[torch.Tensor, Item]) -> torch.Tensor:
 
-def get_value(x: Any, tensor:torch.Tensor, axis: int=1,
-              batch_size: int=1) -> torch.Tensor:
-    """ Convert 'x' to tensor with same dtype, device, ndim as tensor
-    with x.shape[i] == tensor.shape[i] or axis i reduced to 1 by mean
+    _reinit = isinstance(x, float) and x > 0 and x < 1
+    _reinit |= torch.is_tensor(x) and not torch.all(x[x!=1] == 0)
+    _reinit |= isinstance(x, (list, tuple)) and not all(i in (0, 1) for i in x)
+    if _reinit:
+        x = Probs(p=x, expand_dims=0)
 
+    return get_sample_like(x, like=like)
+
+
+def get_sample_like(x: Union[_torchable], like: Union[torch.Tensor, Item]) -> torch.Tensor:
+    """ sample from Value, Probs
+    if x is tensor of correct dtype and device, acts as a pass thru
     Args
-        x       (list, tuple, int, float, ndarray torch.Tensor, Randomize)
-            if ndim == 1 and len() > 1 and len() == len(tensor.shape[axis]
-
-        if x is Randomize class, sample new value
-
-        tensor  torch.Tensor) tensor to match
-            if tensor or ndarray, axis size equal x or reduced to mean
-
-        axis    (int [min(1 | tensor.ndim-1)]) only necessary for broadcasing where x.ndim <= axis
+        x,      torch.Tensor, Values, Probs
+        like    torch.Tensor, item
     """
-    if torch.is_tensor(x) and x.ndim == tensor.ndim and x.dtype == tensor.dtype and x.device == tensor.device:
+    if isinstance(like, list): # list or Item, first element has a tensor in it
+        like = like[0]
+    assert torch.is_tensor(like), f"{Col.YB}expected tensor, got {type(like)}{Col.AU}"
+
+    if isinstance(x, (int, float, list, tuple)):
+        x = get_broadcastable(x, other=like)
+
+    if isinstance(x, torch.Tensor):
+        _to = get_dtype_device_update(x, like)
+        if _to:
+            x = x.to(**_to)
+        size_diff = like.ndim - x.ndim
+        if size_diff > 0 and x.ndim > 1:
+            x = x.view(*x.shape, *[1]*size_diff)
+        elif size_diff < 0 and x.ndim > 1:
+            x = x.view(x.shape[:size_diff])
         return x
 
-    if isinstance(x, Randomize):
-        x, p = x.sample(batch_size)
-    # TODO apply p
-    # TODO what if rebuilt sampler
+    if isinstance(x, Distribution):
+        _to = get_dtype_device_update(x, like)
+        if _to:
+            x.to(**_to)
+        return x.sample(like.shape)
 
-    return get_broadcastable(x, tensor=tensor, axis=axis)
+    raise NotImplementedError(f"Expected, tensor or distribution sampler, got {type(x)}")
+
+
+def get_dtype_device_update(x: Union[torch.Tensor, type], like: torch.Tensor) -> dict:
+    out = {}
+    if like.dtype != x.dtype:
+        out["dtype"] = like.dtype
+    if like.device != x.device:
+        out["device"] = like.device
+    return out
+
+def p_all(p: Union[int, float, torch.Tensor]) -> bool:
+    """ True if p is 1, 1.0 or torch.ones()"""
+    if isinstance(p, (int, float)):
+        return p == 1
+    return p.sum().item() == len(p)
+
+def p_none(p: Union[int, float, torch.Tensor]) -> bool:
+    """ True if p is 0, 0.0 or torch.zeros()"""
+    if isinstance(p, (int, float)):
+        return not p
+    return not p.sum().item()
+
+def p_some(p: Union[int, float, torch.Tensor]) -> bool:
+    """ True if p is tensor with some but not all values == 1."""
+    return not isinstance(p, (float, int)) and len(p) > p.sum().item() > 0
+
