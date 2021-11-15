@@ -6,7 +6,7 @@ import logging
 import numpy as np
 import torch
 from koreto import Col
-from .torch_util import get_broadcastable
+from .torch_util import get_broadcastable, tensor_apply_vals
 
 _torchable = (int, float, list, tuple, np.ndarray, torch.Tensor)
 
@@ -26,7 +26,7 @@ def to_saturation(x: torch.Tensor, saturation: Union[_torchable], axis: int = 1)
         return to_grayscale(x, axis=axis)
     return torch.lerp(to_grayscale(x, axis=axis), x, saturation)
 
-def to_grayscale(x: torch.Tensor, axis :int = 1) -> torch.Tensor:
+def to_grayscale(x: torch.Tensor, axis: int = 1) -> torch.Tensor:
     """ RGB to Grayscale
     x       torch.tensor
     axis    (int [1]) channels axis
@@ -40,7 +40,6 @@ def to_grayscale(x: torch.Tensor, axis :int = 1) -> torch.Tensor:
         x = x.mean(axis=axis, keepdims=True)
 
     return x.broadcast_to(shape)
-
 
 
 # from .random_util import normal, uniform

@@ -33,7 +33,6 @@ def test_normalize():
     assert nmean != mean
     assert nstd != std
 
-
 def test_norm_grad():
     # check default options, config.FOR_DISPLAY is False
     N = Normalize()

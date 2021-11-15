@@ -151,7 +151,6 @@ def normtorange(data: _TensorItem,
                 minimum: Union[type, _Tensorish] = 0,
                 maximum: Union[type, _Tensorish] = 1,
                 p: Union[type, _Tensorish] = 1,
-                excess_only: bool = False,
                 for_display: bool = False,
                 profile: bool = False) -> _TensorItem:
     """  normalize item or tensor | profile memory optional
@@ -159,7 +158,6 @@ def normtorange(data: _TensorItem,
         data        Item | tensor
         minimum     int | float [0.]
         maximum     int | float [1.]
-        excess_only bool [False] - if minimum < data.min() and maximum > data.max(), dont modify
         for_display bool [False] CLONES Item ( not applied if data is tensor )
         profile     bool [False] wraps transform in profiler
     """
@@ -167,28 +165,21 @@ def normtorange(data: _TensorItem,
     minimum = get_sample_like(minimum, like=data)
     maximum = get_sample_like(maximum, like=data)
 
-    # print(f'{inspect.stack()[0].function}()')
-    # print('  minimum', minimum.shape)
-    # print('  maximum', maximum.shape)
-    # print('  p', p.shape)
-
     _transform = transform_profile if profile else transform
     return _transform(data=data, func=normtorange_tensor, for_display=for_display,
-                      meta_keys=['data_1d', 'data_2d', 'data_3d'], minimum=minimum, maximum=maximum,
-                      p=p, excess_only=excess_only)
+                      meta_keys=['data_1d', 'data_2d', 'data_3d'], minimum=minimum,
+                      maximum=maximum, p=p)
 
 def normtorange_tensor(x: torch.Tensor,
                        minimum: _Tensorish,
                        maximum: _Tensorish,
-                       p: _Tensorish = 1,
-                       excess_only: bool = False) -> torch.Tensor:
+                       p: _Tensorish = 1) -> torch.Tensor:
     """
     Args
         x           (tensor)
         minimum     (int, float,tuple,list,tensor)
         maximum     (int, float,tuple,list,tensor)
         p           tensor, list, float
-        excess_only bool    [False] # True: do not expand to min, max, only contract
         axis        int, independent axis: 0: sample. 1: channels
     """
     p = get_bernoulli_like(p, like=x)
@@ -200,23 +191,20 @@ def normtorange_tensor(x: torch.Tensor,
     maximum = get_sample_like(maximum, like=x)
 
     if p_all(p):
-        return normtorange_proc(x, minimum, maximum, excess_only=excess_only)
+        return normtorange_proc(x, minimum, maximum)
 
-    return torch.lerp(x, normtorange_proc(x, minimum, maximum, excess_only=excess_only,
-                                          inplace=False), p)
-
+    return torch.lerp(x, normtorange_proc(x, minimum, maximum, inplace=False), p)
 
 def normtorange_proc(x: torch.Tensor,
                      minimum: torch.Tensor,
                      maximum: torch.Tensor,
-                     excess_only: bool = False,
                      inplace: Optional[bool] = None) -> torch.Tensor:
     """
     Args
         x           (tensor)
         minimum     (int, float,tuple,list,tensor)
         maximum     (int, float,tuple,list,tensor)
-        excess_only (bool [False]) # True: do not expand to min, max, only contract
+        softclamp   (float [None]) 1 -> tanh, inf -> step function
         inplace     (bool [None]) # True for lerping partial probs
     """
     # minimum and maximum can be per sample or for entire batch
@@ -224,23 +212,18 @@ def normtorange_proc(x: torch.Tensor,
     maximum = get_broadcastable(maximum, other=x, axis=1)
     if minimum.shape != maximum.shape:
         minimum, maximum = broadcast_tensors(minimum, maximum)
+    hold_axis = [i for i in range(len(minimum.shape)) if minimum.shape[i] > 1]
 
-    hold_axes = [i for i in range(len(minimum.shape)) if minimum.shape[i] > 1]
-    x_minimum = tensor_apply_vals(x, "min", hold_axes, keepdims=True)
-    x_maximum = tensor_apply_vals(x, "max", hold_axes, keepdims=True)
+    x_minimum = tensor_apply_vals(x, "min", hold_axis, keepdims=True)
+    x_maximum = tensor_apply_vals(x, "max", hold_axis, keepdims=True)
 
-    if excess_only:
-        minimum = torch.maximum(minimum, x_minimum)
-        maximum = torch.maximum(maximum, x_maximum)
-
-    # minimize reductions
-    x_maximum = x_maximum.sub(x_minimum)
-    maximum = maximum.sub(minimum)
+    x_delta = x_maximum.sub(x_minimum)
+    delta = maximum.sub(minimum)
 
     if x.requires_grad or not inplace:
-        return x.sub(x_minimum).div(x_maximum).mul(maximum).add(minimum)
+        return x.sub(x_minimum).div(x_delta).mul(delta).add(minimum)
 
-    return x.sub_(x_minimum).div_(x_maximum).mul_(maximum).add_(minimum)
+    return x.sub_(x_minimum).div_(x_delta).mul_(delta).add_(minimum)
 
 ###
 #
@@ -300,9 +283,8 @@ def gamma(data: _TensorItem,
     """  normalize item or tensor | profile memory optional
     Args
         data        Item | tensor
-        minimum     int | float [0.]
-        maximum     int | float [1.]
-        excess_only bool [False] - if minimum < data.min() and maximum > data.max(), dont modify
+        value       Value, tensor, float    target gamma
+        p           Probs, tensor, float    probability
         for_display bool [False] CLONES Item ( not applied if data is tensor )
         profile     bool [False] wraps transform in profiler
     """
@@ -316,16 +298,10 @@ def gamma(data: _TensorItem,
                       from_gamma=from_gamma, p=p)
 
 
-def gamma_tensor(x: torch.Tensor, 
+def gamma_tensor(x: torch.Tensor,
                  values: torch.Tensor, p: torch.Tensor,
                  from_gamma: _Tensorish = 2.2) -> torch.Tensor:
-    """ if p saturate x to sat*saturation of channels of x
-    0: grayscale, 2, oversaturate, -1 flip saturation
-    if len p > 1 independently saturate
-    Args
-        x   tensor shape NC...
-        sat tensor shape 1 | N | NC
-        p   tensor shape 1 | N
+    """
     """
     p = get_bernoulli_like(p, like=x)
 
@@ -335,8 +311,6 @@ def gamma_tensor(x: torch.Tensor,
     values = get_sample_like(values, like=x)
     from_gamma = get_broadcastable(from_gamma, other=x, axis=1)
 
-    print(f"gamma_tensor(p={p}, from_gamma={from_gamma}")
-            
     if p_all(p):
         return gamma_proc(x, values, from_gamma=from_gamma)
 
@@ -347,3 +321,92 @@ def gamma_proc(x, values=1.0, from_gamma=2.2, inplace: Optional[bool] = None):
     if x.requires_grad or not inplace:
         return x.pow(from_gamma/values)
     return x.pow_(from_gamma/values)
+
+###
+#
+# functional for SoftClamp
+#
+def softclamp(data: _TensorItem,
+                soft: Union[type, _Tensorish] = 1,
+                p: Union[type, _Tensorish] = 1,
+                inflection: Union[type, _Tensorish] = 0.5,
+                for_display: bool = False,
+                profile: bool = False) -> _TensorItem:
+    """  normalize item or tensor | profile memory optional
+    Args
+        data        Item | tensor
+        soft        float [0]: 1 adds soft max min
+        for_display bool [False] CLONES Item ( not applied if data is tensor )
+        profile     bool [False] wraps transform in profiler
+    """
+    p = get_bernoulli_like(p, like=data)
+    soft = get_sample_like(soft, like=data)
+    inflection = get_sample_like(inflection, like=data)
+
+    _transform = transform_profile if profile else transform
+    return _transform(data=data, func=softclamp_tensor, for_display=for_display,
+                      meta_keys=['data_1d', 'data_2d', 'data_3d'], soft=soft,
+                      inflection=inflection, p=p)
+
+def softclamp_tensor(x: torch.Tensor,
+                 soft: Union[float, int],
+                 p: torch.Tensor,
+                 inflection: Union[type, _Tensorish] = 0.5) -> torch.Tensor:
+    """ piecewise tanh clamp
+    Args
+        x           tensor
+        soft        (int [1]): 0 -> linear 0-1, inf -> unit step function
+        dims        (list, tuple)
+    """
+    p = get_bernoulli_like(p, like=x)
+
+    if p_none(p):
+        return x
+
+    soft = get_sample_like(soft, like=x)
+    inflection = get_sample_like(inflection, like=x)
+
+    if p_all(p):
+        return softclamp_proc(x, soft, inflection)
+
+    return torch.lerp(x, softclamp_proc(x, soft, inflection), p)
+
+def softclamp_proc(x: torch.Tensor, soft: Optional[torch.Tensor], inflection: torch.Tensor) -> torch.Tensor:
+    """ piecewise tanh clamp
+    Args
+        x           tensor
+        soft        tensor
+    """
+    if soft is None:
+        return torch.clamp(x, 0, 1)
+    dims = [i for i in range(len(soft.shape)) if soft.shape[i] > 1]
+    x_max = tensor_apply_vals(x, "max", hold_axis=dims, keepdims=True)
+    x_min = tensor_apply_vals(x, "min", hold_axis=dims, keepdims=True)
+
+    # soft=1 match tangent
+    if not torch.all(soft == 1):
+        numax = torch.lerp(x_max, 1 + soft*x_max - soft, (x_max > 1).to(dtype=x_max.dtype))
+        numin = torch.lerp(x_min, soft*x_min, (x_min < 0).to(dtype=x_max.dtype))
+
+
+        delta = x_max.sub(x_min)
+        nudelta = numax - numin
+        x = x.sub(x_min).div(delta).mul(nudelta).add(numin)
+
+        x_max = tensor_apply_vals(x, "max", hold_axis=dims, keepdims=True)
+        x_min = tensor_apply_vals(x, "min", hold_axis=dims, keepdims=True)
+
+    # upper inflection point
+    _half = torch.tensor(0.5, dtype=x.dtype, device=x.device)
+    inflection = torch.min(torch.max(inflection, _half), torch.ones(1))
+
+    _tol = torch.tensor(1e-6, dtype=x.dtype, device=x.device)
+    _ui = torch.min(torch.max(2 - x_max, inflection), 1 - _tol)
+    _uidif = 1 - _ui
+
+    # lower inflection point
+    _li = torch.max(torch.min(-1*x_min, 1-inflection), _tol)
+
+    return torch.where(x < _li, torch.tanh((x-_li)/_li)*_li + _li,
+                       torch.where(x >= _ui, torch.tanh((x-_ui)/_uidif)*_uidif + _ui,
+                                   x))

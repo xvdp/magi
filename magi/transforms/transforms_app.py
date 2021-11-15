@@ -145,7 +145,7 @@ class NormToRange(TransformApp):
     Args:
         minimum         (float, tensor [0.]) min value of normalization
         maximum         (float, tensor [1.]) max value of normalization
-        excess_only     (bool [False]) when True leave images within range untouched
+        softclamp       (float [0]) # > 0 returns smooth clamp with tanh, inf is unit step function
 
         exand_dims      (int, tuple, None [0]) 0: normalize per batch sample
                                                1: normalize per channel
@@ -164,26 +164,23 @@ class NormToRange(TransformApp):
             ..SHOULD NOT BE USED unless original tensors are required unmodified
 
     Examples
-    >>> N = NormToRange() # most common case, normalizes data to range, 0-1, each sample independently
-    >>> N = NormToRange(minimum=0, maximum=1, excess_only=False, expand_dims=(0,), p=1)  # equivalent
+    >>> N = NormToRange() # most common case, normalizes data to range, 0-1, independent samples
+    >>> N = NormToRange(minimum=0, maximum=1, expand_dims=(0,), p=1) # equivalent
     >>> N(img)
 
     # normalize with probabilities per channel, clone output insetad of overwriting
     >>> N = NormToRange(minimum=0, maximum=1, for_display=True, p=[0,0.5,1])
 
-    # normalize only if values excede range
-    >>> N = NormToRange(minimum=0, maximum=1, excess_only=True)
-
     # normalize each channel independently
     >>> N = NormToRange(minimum=0, maximum=1, expand_dims=(0,1))
 
     # normalize categorically over two different ranges, samples and channels independently
-    >>> N = NormToRange(expand_dims=(0,1), maximum=1.2, minimum=-0.5,  maximum_b=0.8, minimum_b=0.2, p=0.5, distribution='Categorical')
+    >>> N = NormToRange(expand_dims=(0,1), maximum=1.2, minimum=-0.5,  maximum_b=0.8, minimum_b=0.2,
+                        p=0.5, distribution='Categorical')
     """
     def __init__(self,
                  minimum: _Tensorish = 0.0,
                  maximum: _Tensorish = 1.0,
-                 excess_only: bool = False,
                  p: _Tensorish = 1.0,           # probability / optional args
                  p_dims: Union[None, int, tuple, list] = 0,     # vary probability over dims
                  distribution: Optional[str] = "Uniform",
@@ -205,14 +202,12 @@ class NormToRange(TransformApp):
                               distribution=distribution, **{**kwargs, **kw_max})
         self.p = Probs(p=p, expand_dims=p_dims)
 
-        self.excess_only = excess_only
-
     def __call__(self, data: Union[torch.Tensor, list], **kwargs) -> Union[torch.Tensor, list]:
         """ Returns data in range (minimum, maximum)
         Args:
             data: tensor or Item or list
             **kwargs    overwritedes to class
-                maximum, minimum, p, excess_only
+                maximum, minimum, p,
                 for_display (bool [False]) clones data
                 profile     (bool [False]) wraps func in @memory_profile
         """
@@ -296,7 +291,7 @@ class Gamma(TransformApp):
         b           (float > 0 [None])   target gamma b, if None int between input and a with prob p
                         b is float > 0, continuous sample distribution
         p           (float 0-1 [0.1])   bernoulli chance of transform
-        distribution(str  ["Normal"])   "ormal", "uniform", "multinoulli", None
+        distribution(str  ["Normal"])   in Values
                         None:       discrete between a and b, (or if b is None, a if p, else None)
     """
     def __init__(self,
@@ -328,3 +323,47 @@ class Gamma(TransformApp):
         """
         kw_call = self.update_kwargs(**kwargs)
         return F.gamma(data, **kw_call)
+
+class SoftClamp(TransformApp):
+    """ SoftClamp
+    Clamp between 0,1 with tanh
+    Args:
+        a           (float >0  [1.0])   target softness a
+        b           (float > 0 [None])  target softness b
+                        b is float > 0, continuous sample distribution
+        inflection  (float >= 0.5 < 1. [0.5])
+        p           (float 0-1 [0.1])   bernoulli chance of transform
+        distribution(str  ["Normal"])   in Values
+                        None:       discrete between a and b, (or if b is None, a if p, else None)
+    """
+    def __init__(self,
+                 p: _Tensorish = 1.0,                           # probability
+                 p_dims: Union[None, int, tuple, list] = 0,     # vary probability over dims
+                 a: _Tensorish = 1.0,       # 0 -> torch.clamp(0,1), inf -> unit step function
+                 b: Optional[_Tensorish] = None,                # second target softness
+                 inflection: _Tensorish = 0.5,                  # inflection point 0.5 -> 1.
+                 distribution: Optional[str] = "Normal",
+                 expand_dims: Union[None, int, tuple, list] = 0,# vary softness over dims
+                 for_display: Optional[bool] = None,            # clone before appying
+                 **kwargs) -> None:                             # kwargs for transforms.Values()
+
+        super().__init__(for_display=for_display)
+        kw_infl = {key:kwargs.pop(k) for k, key in self.extract_keys("inflection_", **kwargs).items()}
+
+        self.soft = Values(a=a, b=b, expand_dims=expand_dims, distribution=distribution, **kwargs)
+        self.inflection = Values(a=inflection, expand_dims=expand_dims, distribution=distribution,
+                                 **{**kwargs, **kw_infl})
+        self.p = Probs(p=p, expand_dims=p_dims)
+
+    def __call__(self, data: Union[torch.Tensor, list], **kwargs) -> Union[torch.Tensor, list]:
+        """ Returns data in range (minimum, maximum)
+        Args:
+            data: tensor or Item or list
+            **kwargs    overwritedes to class
+                soft    (float, tensor)
+                p       (float, tensor)
+                for_display (bool [False]) clones data
+                profile     (bool [False]) wraps func in @memory_profile
+        """
+        kw_call = self.update_kwargs(**kwargs)
+        return F.softclamp(data, **kw_call)

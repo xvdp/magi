@@ -40,21 +40,24 @@ When called with ` distribution=None `, or without secondary value kwarg values 
 **`__type__ = 'Appearance'`**
 
 ### **Normalize()**
-With alias  `MeanCenter()` standard normalization transform `(x-mean)/std`. `'mean'` and `'std'` can be probabilistic. 
+With alias  `MeanCenter()` standard normalization. Typycally for `x` in dataset `X`, `(x - X.mean())/X.std()`. Arguments `'mean'` and `'std'`  can inherit from class `Values()` i.e be probabilistic. 
 
 ### **UnNormalize()**
-Inverse of normalize.
+Inverse of normalize `x * X.std() + X.mean()`, has alias `UnMeanCenter()`
 
 ### **NormToRange()**
-Linearly transform values to range between minimum and maximum. Most common use case of `NormToRange(minimum=0, maximum=1)`. `'minimum'` and `'maximum'` can be probabilistic.
+Feature scaling, by default to 0-1, most common use case `NormToRange(minimum=0, maximum=1)`. `'minimum'` and `'maximum'` can inherit from class `Values()` i.e. be probabilistic.
+
+### **SoftClamp()**
+Piecewise Tanh feature scaling. Minimum and maximum are fixed at 0,1. Softness of the tanh or inflection point are variables that can inherit from class `Values()`.
 
 ### **Saturate()**
-Changes saturation values, `Saturate(a=0, p=1)` converts to grayscale. a<0 inverts saturation, a>1 oversaturates. `(a=-1, b=2, distribution='Uniform', p=0.5, p_dims=0, expand_dims=(0,1)) ` outputs random distribution samples between inverse and over saturation over samples and channels, with 50% probability over sample.
+One probabilistic argument `'a'`. Changes saturation values, `Saturate(a=0, p=1)` converts to grayscale. `Saturate(a=-1, b=2, distribution='Uniform', p=0.5, p_dims=0, expand_dims=(0,1)) ` outputs random distribution samples between inverse and over saturation over samples and channels, with 50% probability over sample.
 ```python
 # Example Saturate with Categorical distribution over values (-2, 0, 3, 10) with 90% probability.
 d = I.__getitem__()
 img = merge_items((d,d,d,d))
-Sat = Saturate(a=-2, b=3, c=10, d=0, p=0.9, p_dim=0, expand_dims=0, distribution="Categorical", for_display=True)
+Sat = Saturate(a=-2, b=3, c=10, d=0, p=0.9, p_dims=0, expand_dims=0, distribution="Categorical", for_display=True)
 Show()(Sat(img))
 ```
 <div align="center">
@@ -62,7 +65,9 @@ Show()(Sat(img))
 </div>
 
 ### **Gamma()**
-Apply gamma. One probabilistic argument, target gamma `'a'`, one constant, source gamma, with default 2.2
+Apply gamma `img^(from_gamma/target_gamma)`. One probabilistic argument, target gamma `'a'`, one constant, `from_gamma=2.2 `. 
+
+
 ## Affine Transforms
 
 
