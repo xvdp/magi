@@ -62,6 +62,11 @@ class Transform(object):
             rep += f"{sep}{key}={value}"
         return rep + ")"
 
+    @staticmethod
+    def update_shortcut(shortcut: tuple, kwargs: dict) -> None:
+        if shortcut[0] in kwargs:
+            kwargs[shortcut[1]] = kwargs.pop(kwargs[shortcut[0]])
+
     def update_kwargs(self, exclude_keys: Union[None, list, tuple] = None, **kwargs) -> tuple:
         """ utility
             __call__(**kwargs) changes transform functional

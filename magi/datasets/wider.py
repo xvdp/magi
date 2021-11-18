@@ -71,13 +71,15 @@ class WIDER(Dataset_M):
                       'blur', 'expression', 'illumination', 'invalid', 'occlusion', 'pose',
                       'index', 'wider_activity', 'wider_id',  'wordnet_id']
 
-        self._meta = ['data_2d', 'positions_2d', 'path',
+        self._kind = ['data_2d', 'pos_2d', 'path',
                       'attr_id', 'attr_id', 'attr_id', 'attr_id', 'attr_id', 'attr_id',
                       'image_id', 'class_name', 'class_id', 'class_id']
 
         self._dtype = [self.dtype, self.dtype, "str",
                        'uint8', 'bool', 'bool', 'bool', 'uint8', 'bool',
                        'int', 'str', 'uint8', 'int']
+
+        self._form = ['NCHW', 'xywh', *[None]*11]
 
         self.names = self._filter_names(names)
         self._make_dataset(mode=mode)
@@ -88,10 +90,10 @@ class WIDER(Dataset_M):
         index = index if index is not None else torch.randint(len(self), (1,)).item()
         item =  self.samples[index].deepcopy()
 
-        path_idx = item.get_indices(meta="path")[0]
+        path_idx = item.get_indices(kind="path")[0]
         path_name = item[path_idx] if self.names is None or "name" in self.names else item.pop(path_idx)
         image = self.open(path_name) # open dtype, device and torch transforms from parent class
-        item.insert(0, image, meta="data_2d", names="image", dtype=self.dtype)
+        item.insert(0, image, kind="data_2d", names="image", dtype=self.dtype, form="NHCW")
         item.to_torch(device=self.device)
 
         return item
@@ -131,7 +133,7 @@ class WIDER(Dataset_M):
 
         with keys for entries
             .names   entry name: image, bbox, name, *attributes, activity, wider_id, wordnet_id
-            .meta   entry type: data_2d, position_2d, path, *[attr_id]*6, class_name, *[class_id]*3
+            .kind   entry type: data_2d, position_2d, path, *[attr_id]*6, class_name, *[class_id]*3
             .dtype  entry dtype: self.dtype, self.dtype, str, int, str, uint8, int, int, int
 
         class_id includes both WIDER class_id, and Wordnet class_id
@@ -154,16 +156,18 @@ class WIDER(Dataset_M):
 
         # sample names
         names = self._names[1:]
-        meta = self._meta[1:]
+        kind = self._kind[1:]
         dtype = self._dtype[1:]
+        form = self._form[1:]
 
         _keep_indices = None
         if self.names is not None:
             _immutable_names = ["bbox", "name"]
             _keep_indices = [i for i in range(len(names)) if names[i] in self.names + _immutable_names]
             names = [names[i] for i in _keep_indices]
-            meta = [meta[i] for i in _keep_indices]
+            kind = [kind[i] for i in _keep_indices]
             dtype = [dtype[i] for i in _keep_indices]
+            form = [form[i] for i in _keep_indices]
 
         # ['blur', 'expression', 'illumination', 'invalid', 'occlusion', 'pose']
         attrnames = self._names[3:9]
@@ -221,10 +225,11 @@ class WIDER(Dataset_M):
                 idcs = [i for i in range(len(names)) if names[i] not in ["bbox"]+attrnames]
                 if len(images) == 0:
                     names = [names[i] for i in idcs]
-                    meta = [meta[i] for i in idcs]
+                    kind = [kind[i] for i in idcs]
                     dtype = [dtype[i] for i in idcs]
+                    form = [form[i] for i in idcs]
 
-            images.append(Item(values, names=names, meta=meta, dtype=dtype))
+            images.append(Item(values, names=names, kind=kind, dtype=dtype, form=form))
         return images
 
     @staticmethod

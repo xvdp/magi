@@ -418,7 +418,7 @@ def save_img(data: np.ndarray,
                 _d = _d[:2]
             _im = Image.fromarray(_d)
             _im.save(name)
-        name = _increment_name(name)
+        name = increment_name(name)
 
         logging.info("save with backend: %s"%backend, _d.shape, _d.dtype, _d.min(), _d.max())
 
@@ -449,10 +449,10 @@ def _resolve_path(name: str, ext: str = ".png", folder: str = ".", conflict: int
             frameinfo = getframeinfo(currentframe())
             warnings.showwarning(msg, UserWarning, frameinfo.filename, frameinfo.lineno)
         if conflict > 0:
-            name = _increment_name(name)
+            name = increment_name(name)
     return name
 
-def _increment_name(name: str) -> str:
+def increment_name(name: str) -> str:
     while osp.isfile(name):
         _name, _ext = osp.splitext(name)
         i = -1

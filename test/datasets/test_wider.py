@@ -23,14 +23,14 @@ def test_widerload():
     assert osp.isfile(name), f"image not found, {name}"
     assert len(item) == len(W._names[1:])
     assert item.names == W._names[1:]
-    assert item.meta == W._meta[1:]
+    assert item.kind == W._kind[1:]
     assert item.dtype == W._dtype[1:]
 
     item = W.__getitem__()
     assert item is not None
     assert isinstance(item[0], torch.Tensor)
     assert item.names == W._names
-    assert item.meta == W._meta
+    assert item.kind == W._kind
     assert item.dtype == W._dtype
 
 

@@ -93,7 +93,7 @@ class Noise(Dataset):
         self._counter += 1
 
         return Item([tensor, label], names=['image', 'target_index'],
-                     meta=[f'data_{self._dims}d', 'id'], dtype=[self.dtype, 'int'])
+                     kind=[f'data_{self._dims}d', 'id'], dtype=[self.dtype, 'int'])
 
     def __repr__(self, exclude_keys: Union[list, tuple]=None) -> str:
         """ utility, auto __repr__()

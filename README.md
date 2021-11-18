@@ -1,14 +1,12 @@
 # Magi
 *Magister Lt. teacher*
 
-A collection of augmentation, training and dataloader wrappers for `pytorch`. This set of tools was built to address the fact that world data is multimodal and chaotic, one may want to pass images alongside with annotations, sounds or graphs into a learner, or a collection of data may require to share parameters across multiple models, or a model may require benchmarking across augmentation ranges, or augmentation could require exploration of different probability distributions. Each of the cases mentioned requires bootstrapping existing pipleines which eventually became untennable.
-
-To handle mulitmodal data, a feature class `Item` was designed on top of a list, with per item tags, interpretable by augmentation to --for instance-- rotate a 3d point cloud, or position parameters along side an image. To handle distributions, every augmentation parameter can be constant or randomized by a distribution in the exponential family. To handle compactness, operations without gradients are in place by default, but data can be generically cloned or profiled. To handle benchmarking augmentation can be passed to dataloaders as dictionaries with ranges. Transforms are differentiable.
+A collection of augmentation, training and dataloader wrappers for `pytorch`. This set of tools was built to address the fact that world data is multimodal, one may want to pass images alongside with annotations, sounds or graphs into a learner, or a collection of data may require to share parameters across multiple models, or a model may require benchmarking across augmentation ranges, or augmentation could require exploration of different probability distributions.
 
 
 Parts:<br>
-1. Agumentation
-2. Features
+1. Agumentation -
+2. Features - data container `Item`
 3. Datasets and Dataloaders
 
 
@@ -24,73 +22,65 @@ Transforms are classes which `__call__()` functionals. Functionals have a main t
 
 Transformations have class parameter `__type__` that specify to the type of action on the data: `IO`, `Appearance`, `Affine`. Even though IO 'transforms' cannot be strictly considered as transforms, they are built with the same syntax.
 
-All transformations on data (other than IO), can be constant and most, can be randomized. Randomization can be triggered both at the Transformation or at the functional level, leveraging class `Randomize(a,b,p,distribution)` built over `torch.distributions`. Randomization is driven by bernoulli probability, over batch, item and or channel. 
+All transformations on data (other than IO), can be constant and most parameters can be randomized leveraging class `Values(a,b,distribution)` built over `torch.distributions`, and `Probs(p)` which serves as a Bernoulli mask. Any of the data dimensions can be probabilistic, i.e. an image batch may be augmented with separate parameters for sample, channel or even pixel. 
 
-Functionals for supported data kinds are suffixed, tagged and handled by the main functional transform wrapper in `functional_base`. For example, on affine transforms bounding boxes or paths on an image need to be transformed along images, transform `Rotate()` will call functional `rotate_tensor()` and `rotate_positions()`. New types of data that require transformation need to be tagged and an appropriate functional handler built.
-
-Operations that require back propagation can call the typed functionals bypassing higher level typechecking, e.g. `rotate_tensor()`.
+Transformations can be called from the transform class or--for use inside a differentiable pipeline--from the functional. Functionals for supported data kinds are suffixed, tagged and handled by the main functional transform wrapper in `functional_base`. For example, on affine transforms bounding boxes or paths on an image need to be transformed along images, transform `Rotate()` will call functional `rotate_tensor()` and `rotate_positions()`. New types of data that require transformation need to be tagged and an appropriate functional handler built.
 
 Higher level transforms--handling data loaded from datasets or streams--are typechecked, through a container class handling features `Item()`.
 
-
 For a description of different augmentations: [Augumentations](AUGMENT.md)
-<!-- <img src="https://render.githubusercontent.com/render/math?math=0\geq p \geq1" style="background-color:white;padding:5px;"> -->
 
-# TODO
-Centralize dtype and device resolution
-```
-config
-    resolve_dtype(dtype)
-    get_valid_device(device)
-torch_util
-    torch_dtype
-    str_dtype
-```
-## 2.Features
+## 2.Features: `Item()`
 
-Dataset features are an openended problem, a dataset may provide data with class names, regression targets, or a collection of data of different modes. <br>
-To address this openendednes this adds an addressable list, `class Item(list)` a feature that is both a list and can contain tags to aid the handling of data.<br>
-Item can be cast to `list(Item)` or be used to carry any kind of structured data.
-For example:
+Dataset features are an open ended problem, a dataset may provide data with class names, regression targets, or a collection of data of different modes. <br>
 
+To handle mulitmodal data, a feature class `Item` inheriting from `list`, with parallel lists tagging each item 'name', 'kind', 'dtype', 'form'.
+Once augmented, an Item can be cast to list, stripping uneccessary information.
+
+Datasets in this project output `__getitem__()` as Item()
+
+For instance, getting an item from WIDER dataset
 ```python
-item = Item([[[0,1],[2,3]],[[1,2],[3,4]],  [125,125]], meta=["data","data", "id"], dtype=["float32", "float16", "int"])
-print(item, isinstance(item, list) # -> [[[0, 1], [2, 3]], [[1, 2], [3, 4]], [125, 125]] True
-
-item.to_torch(device="cuda")
-print(item) # returns each item with the assigned dype
-# -> [tensor([[0., 1.],
-#             [2., 3.]], device='cuda:0'), tensor([[1., 2.],
-#             [3., 4.]], device='cuda:0', dtype=torch.float16), tensor([125, 125], device='cuda:0', dtype=torch.int32)]
-print(item.keys) #-> ['meta', 'dtype']
-print(item.meta) #-> ['data', 'id']
-item.get("meta", "data") # returns
-#-> [tensor([[0., 1.],
-#           [2., 3.]], device='cuda:0'), tensor([[1., 2.],
-#           [3., 4.]], device='cuda:0', dtype=torch.float16)]
-
+>>> from magi.datasets import WIDER
+>>> W = WIDER()
+>>> data = W.__getitem__()
+>>> data.keys
+['names', 'kind', 'dtype', 'form']
+>>> data.names
+['image', 'bbox', 'name', 'blur', 'expression', 'illumination', 'invalid', 'occlusion', 'pose', 'index', 'wider_activity', 'wider_id', 'wordnet_id']
+>>> data.kind
+['data_2d', 'pos_2d', 'path', 'attr_id', 'attr_id', 'attr_id', 'attr_id', 'attr_id', 'attr_id', 'image_id', 'class_name', 'class_id', 'class_id']
+['float32', 'float32', 'str', 'uint8', 'bool', 'bool', 'bool', 'uint8', 'bool', 'int', 'str', 'uint8', 'int']
+>>> data.form
+['NHCW', 'xywh', None, None, None, None, None, None, None, None, None, None, None]
+>>> data.get(kind='path')
+['/home/z/data/Face/WIDER/WIDER_train/images/37--Soccer/37_Soccer_Soccer_37_192.jpg']
+>>> data.get(kind='pos_2d')
+[tensor([[[[439.,  63.], [ 51.,  69.]], [[584., 148.], [ 55.,  68.]], [[680., 124.], [ 63.,  58.]], [[888.,  74.], [ 38.,  45.]]]])]
+>>> data.get_indices(kind='pos_2d')
+[1]
+>>> data.form[1]
+'xywh' # -> positional annotation format
 ```
 
 
+<!-- ```python
+    item = Item([[[0,1],[2,3]],[[1,2],[3,4]],  [125,125]], kind=["data","data", "id"], dtype=["float32", "float16", "int"])
+    print(item, isinstance(item, list) # -> [[[0, 1], [2, 3]], [[1, 2], [3, 4]], [125, 125]] True
 
-### augmentation
-Augmentation closely follows torchvision.transform design, with classes with callable methods. The main differences are that most of the implementations use pytorch native code and batches are built to handle any tagged data, positional annotations, provided that handlers for that data have been registered. <br> 
+    item.to_torch(device="cuda")
+    print(item) # returns each item with the assigned dype
+    # -> [tensor([[0., 1.],
+    #             [2., 3.]], device='cuda:0'), tensor([[1., 2.],
+    #             [3., 4.]], device='cuda:0', dtype=torch.float16), tensor([125, 125], device='cuda:0', dtype=torch.int32)]
+    print(item.keys) #-> ['kind', 'dtype']
+    print(item.kind) #-> ['data', 'id']
+    item.get(kind="data_2d") # returns
+    #-> [tensor([[0., 1.],
+    #           [2., 3.]], device='cuda:0'), tensor([[1., 2.],
+    #           [3., 4.]], device='cuda:0', dtype=torch.float16)]
 
-Extending pytorch convension, data batches are fed as tagged lists using `class Item` from datasets/features.py. ListDict behaves as a list and a dictionary,  each list element requires a corresponding element, which may be a tag or other data,  for each of the keys in Item. <br>
- e.g.
-```python
-# if image batch is in form
-data = Item([tensor, tensor_list, indices], tags=["tensor2d", "positions2d", "indices"])
-# where len(tensor) == len(list_of_tensor_annotations) == len(tensor_indices) == N, size of batch
-out = magi.transforms.Rotation()(data)
-# out -> Item([rotated_tensor, rotated_tensor_list, indices], tags=["tensor2d", "positions2d", "indices"]))
-```
-Given the wide variety of data, this is currently loosely typed. <br>
-Handlers for how to interpret the different data are registered under transforms/handlers.py 
-
-<!-- Tensors and lists of tensor annotations are rotated in the order defined in config, y or x dominant. <br>
-Tensor lists can be of form [N,2,2] in the case of a box annotation or [N,2,M] in the case of paths. -->
-
+``` -->
 
 
 ### datasets abd dataloading
@@ -98,7 +88,6 @@ Dataloader can pass transforms as dictionaries, for serialization.
 
 ### training
 tbd
-
 
 
 

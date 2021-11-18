@@ -14,16 +14,22 @@ Annotation Tensor Lists will be transformed by Affine
 
 
 """
-from typing import Any, Union, Optional
+from typing import Union, Optional
 import logging
+import numpy as np
 import torch
+from torch.distributions import Bernoulli
 import torchvision.transforms as TT
 from koreto import Col
+
 from .transforms_base import Transform
 from . import functional_io as F
 from .. import config
 from ..utils import warn_grad_cloning, warn_np_dtypes
 
+
+_tensorish = (int, float, list, tuple, np.ndarray, torch.Tensor)
+_Tensorish = Union[_tensorish]
 # pylint: disable=no-member
 #
 # IO Transforms
@@ -140,53 +146,77 @@ class Show(Transform):
         mode        (str "xyhw") boxmode for showing target boxes
     """
     __type__ = "IO"
-    def __init__(self, ncols=None, pad=0, show_targets=1, annot=None,
-                 width=20, height=None, as_box=0, path=None, max_imgs=0, unfold_channels=False):
+    def __init__(self,
+                 ncols: Optional[int] = None,
+                 pad: int = 0,
+                 show_targets: bool = True,
+                 target_mode: Union[config.BoxMode, str] = "xywh",
+                 width: int = 20,
+                 height: int = 10,
+                 save: Optional[str] = None,
+                 unfold_channels: bool = False) -> None:
+        """
+        TODO: cleanup removed args
+                #  target_rotation: bool = True,
+                #  annot: Optional[str] = None,
+                #  max_imgs: int = 0,
+                # self.target_rotation = target_rotation
+                # self.annot = annot
+                # self.max_imgs = max_imgs
+        """
         self.ncols = ncols
         self.pad = pad
         self.show_targets = show_targets
-        self.annot = annot
+        self.target_mode = target_mode
         self.width = width
         self.height = height
-        self.path = path
-        self.as_box = as_box
-        self.max_imgs = max_imgs
+        self.save = save
         self.unfold_channels = unfold_channels
 
-    def __call__(self, data, **kwargs):
+    def __call__(self, data: Union[list, torch.Tensor, np.ndarray], **kwargs) -> None:
         """
         Args:
             data        (torch tensor or tuple of tensors) NCHW
             **kwargs    any argument from __init__, locally
                         w shorthand for width
 
-            # Too many kwargs
-            extra kwargs:
-                alpha       if alpha exists as 4th channel, mask alpha, 1: gray, 2: red
-                bbox        draw a bounding box around all subboxes
-                as_box      (bool/int),  if true, disregard rotation angle and draw rectangle
-                hist        (bool/int) shows
-                crop        show only a crop of image, format y0,y1,x0,x1
-                title
-                color       color of bounding boxes
-                lwidth      linewidth of bounding boxes
-                mode        box mode [config.BOXMODE]
         """
-        kw_call, kw_ = self.update_kwargs(**kwargs)
-        if 'w' in kw_ and 'width' not in kwargs:
-            kw_call['width'] = kw_['w']
+        self.update_shortcut(('w', 'width'), kwargs)
+        self.update_shortcut(('h', 'height'), kwargs)
+        kw_call = self.update_kwargs(**kwargs)
+        return F.show(data, **kw_call)
 
-        print(kw_call)
+##
+#
+# Compose Transforms
+#
+class Compose(Transform):
+    """Composes several transforms together, arguments are evaluated left to right.
 
-        # if isinstance(data, np.ndarray):
-        #     _div = 1.0 if data.dtype != np.uint8 else 255.
-        #     data = torch.from_numpy(data).to(dtype=torch.float32).div_(_div)
-    
-        # elif isinstance(data[0], np.ndarray):
-        #     _div = 1.0 if data[0].dtype != np.uint8 else 255.
-        #     data[0] = torch.from_numpy(data[0]).to(dtype=torch.float32).div_(_div)
+    similar to torchvision.transforms.Compose, added probability of transfom
+    Args:
+        transforms (list of ``Transform`` objects): list of transforms to compose.
+        p   (float >0, <=1 [1.0]) Bernoulli probability that any of the transforms will be performed
+            (list, tuple same len as transforms), Bernoulli probability per transform
 
-        # return F.show(data, ncols=args["ncols"], pad=args["pad"], show_targets=args["show_targets"],
-        #               annot=args["annot"], width=width, height=args["height"],
-        #               path=args["path"], as_box=args["as_box"], max_imgs=args["max_imgs"],
-        #               unfold_channels=args["unfold_channels"], **kw)
+    Example:
+    # center crop always, desaturate with prob of 50%
+    >>> transforms.Compose([CenterCrop(224), Saturate(a=0)], p=(1, 0.5))
+    """
+    __type__ = "Compose"
+    def __init__(self, transforms: Union[list, tuple], p: int = 1.0) -> None:
+        self.transforms = transforms
+
+        assert isinstance(p, _tensorish), f"'p: expected {_tensorish} got {type(p)}"
+        if isinstance(p, (float, int)):
+            p = [p] * len(transforms)
+        assert all(_p > 0 and _p <= 1 for _p in p), f"expected probs > 0 and <=1  got({p})"
+        self.p = Bernoulli(probs=torch.astensor(p))
+
+    def __call__(self, data: torch.Tensor) -> torch.Tensor:
+        probs = self.p.sample()
+        for i, _t in enumerate(self.transforms):
+            if probs[i]:
+                data = _t(data)
+
+        return data

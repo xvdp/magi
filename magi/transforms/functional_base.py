@@ -27,7 +27,7 @@ _vector = (np.ndarray, torch.Tensor)
 #
 def transform(data: Union[_tensoritem],
               func: Callable,
-              meta_keys: Optional[list] = None,
+              kind_keys: Optional[list] = None,
               for_display: bool = False, **kwargs) -> Union[_tensoritem]:
     """ Apply generic functional transform
     Args
@@ -36,7 +36,7 @@ def transform(data: Union[_tensoritem],
 
     Args called if data is Item
         for_display bool [False], if True, CLONE
-        meta_keys   list of meta keys to be transformed
+        kind_keys   list of kind keys to be transformed
 
     Args to transform function
         **kwargs    function arguments
@@ -54,8 +54,8 @@ def transform(data: Union[_tensoritem],
             data = data.deepclone()
 
     # Apply transform to Item indices
-    indices = data.get_indices(meta=meta_keys)
-    assert indices, f"Cannot Transform, missing Item.meta keys in {meta_keys}"
+    indices = data.get_indices(kind=kind_keys)
+    assert indices, f"Cannot Transform, missing Item.kind keys in {kind_keys}"
     for i in indices:
         data[i] = func(data[i], **kwargs)
     return data
@@ -63,7 +63,7 @@ def transform(data: Union[_tensoritem],
 @memory_profiler
 def transform_profile(data: Union[_tensoritem],
                       func: Callable,
-                      meta_keys: Optional[list] = None,
+                      kind_keys: Optional[list] = None,
                       for_display: bool = False, **kwargs) -> Union[_tensoritem]:
     """ nvml, torch.cuda.stats, torch.profiler digest on transform """
 
@@ -77,7 +77,7 @@ def transform_profile(data: Union[_tensoritem],
             kw[key] = value
     print(f"\n@memory_profiler\n{func.__name__}({kw})".replace(" ", ""))
 
-    return transform(data=data, func=func, meta_keys=meta_keys, for_display=for_display, **kwargs)
+    return transform(data=data, func=func, kind_keys=kind_keys, for_display=for_display, **kwargs)
 
 def get_bernoulli_like(x: Union[_torchable], like: Union[torch.Tensor, Item]) -> torch.Tensor:
 

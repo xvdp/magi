@@ -104,18 +104,19 @@ class DatasetFolder_M(Dataset_M):
         if 'filename' not in names:
             names += ['filename']
 
-        # names, meta, dtype
-        _elems = {'image': ['data_2d', self.dtype],
-                  'filename': ['path', 'str'],      # filename
-                  'image_index': ['id', 'int'],     # image index
-                  'target_folder': ['name', 'str'], # class folder, e.g. n04557648
-                  'target_name': ['name', 'str'],   # class name, e.g. 'water_bottle' # requires self.target_names
-                  'target_index': ['id', 'int']}    # class index
+        # names, kind, dtype
+        _elems = {'image': ['data_2d', self.dtype, 'HCHW'],
+                  'filename': ['path', 'str', None],      # filename
+                  'image_index': ['id', 'int', None],     # image index
+                  'target_folder': ['name', 'str', None], # class folder, e.g. n04557648
+                  'target_name': ['name', 'str', None],   # class name, e.g. 'water_bottle' # requires self.target_names
+                  'target_index': ['id', 'int', None]}    # class index
 
-        meta = [_elems[name][0] for name in names]
+        kind = [_elems[name][0] for name in names]
         dtype = [_elems[name][1] for name in names]
+        form = [_elems[name][2] for name in names]
 
-        return TypedItem(names, meta, dtype)
+        return TypedItem(names=names, kind=kind, dtype=dtype, form=form)
 
     def _make_item(self, **kwargs):
         """
@@ -138,7 +139,7 @@ class DatasetFolder_M(Dataset_M):
         index = index if index is not None else torch.randint(0, len(self), (1,)).item()
         item =  self.samples[index].deepcopy()
 
-        path_idx = item.get_indices(meta="path")[0]
+        path_idx = item.get_indices(kind="path")[0]
         path_name = item[path_idx] if "filename" in self.keep_names else item.pop(path_idx)
 
         item[0] = self.open(path_name)

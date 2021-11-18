@@ -50,7 +50,7 @@ def normalize(data: _TensorItem,
 
     _transform = transform_profile if profile else transform
     return _transform(data=data, func=normalize_tensor, for_display=for_display,
-                      meta_keys=['data_1d', 'data_2d', 'data_3d'], mean=mean, std=std,
+                      kind_keys=['data_1d', 'data_2d', 'data_3d'], mean=mean, std=std,
                       p=p)
 
 def normalize_tensor(x: torch.Tensor,
@@ -102,7 +102,7 @@ def unnormalize(data: _TensorItem,
 
     _transform = transform_profile if profile else transform
     return _transform(data=data, func=unnormalize_tensor, for_display=for_display,
-                      meta_keys=['data_1d', 'data_2d', 'data_3d'], mean=mean, std=std,
+                      kind_keys=['data_1d', 'data_2d', 'data_3d'], mean=mean, std=std,
                       p=p)
 
 def unnormalize_tensor(x: torch.Tensor,
@@ -167,7 +167,7 @@ def normtorange(data: _TensorItem,
 
     _transform = transform_profile if profile else transform
     return _transform(data=data, func=normtorange_tensor, for_display=for_display,
-                      meta_keys=['data_1d', 'data_2d', 'data_3d'], minimum=minimum,
+                      kind_keys=['data_1d', 'data_2d', 'data_3d'], minimum=minimum,
                       maximum=maximum, p=p)
 
 def normtorange_tensor(x: torch.Tensor,
@@ -240,7 +240,7 @@ def saturate(data: _TensorItem,
 
     _transform = transform_profile if profile else transform
     return _transform(data=data, func=saturate_tensor, for_display=for_display,
-                      meta_keys=['data_1d', 'data_2d', 'data_3d'],
+                      kind_keys=['data_1d', 'data_2d', 'data_3d'],
                       sat=sat, p=p)
 
 def saturate_tensor(x: torch.Tensor, sat: torch.Tensor, p: torch.Tensor) -> torch.Tensor:
@@ -294,7 +294,7 @@ def gamma(data: _TensorItem,
 
     _transform = transform_profile if profile else transform
     return _transform(data=data, func=gamma_tensor, for_display=for_display,
-                      meta_keys=['data_1d', 'data_2d', 'data_3d'], values=values,
+                      kind_keys=['data_1d', 'data_2d', 'data_3d'], values=values,
                       from_gamma=from_gamma, p=p)
 
 
@@ -345,7 +345,7 @@ def softclamp(data: _TensorItem,
 
     _transform = transform_profile if profile else transform
     return _transform(data=data, func=softclamp_tensor, for_display=for_display,
-                      meta_keys=['data_1d', 'data_2d', 'data_3d'], soft=soft,
+                      kind_keys=['data_1d', 'data_2d', 'data_3d'], soft=soft,
                       inflection=inflection, p=p)
 
 def softclamp_tensor(x: torch.Tensor,

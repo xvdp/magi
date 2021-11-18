@@ -6,10 +6,10 @@ Item is intentded as compromise between:
     precision of dict features on tensorflow
 e.g. ref. https://github.com/tensorflow/datasets/tree/v4.4.0/tensorflow_datasets/core/features
 
-dataset.__getitem__() can output a plain ListDict without tags as canonical ImageNet e.g.
+dataset.__getitem__() can output a plain ListDict without names as canonical ImageNet e.g.
     [image_tensor, class_id]
         ot iy can output any size list, or tag each element, eg.
-    [image_tensor, image_id, class_id].{"tags":["image", "image_id", "class_id]}
+    [image_tensor, image_id, class_id].{"names":["image", "image_id", "class_id]}
 
 ListDict() has no requirements, at its simplest is a list, or a list with dictionary
 
@@ -31,9 +31,9 @@ class ListDict(list):
     """ List with Dict
 
     Example
-    >>> item = ListDic([torch.randn([1,3,45,45]), torch.tensor([[0,20],[0,20.]]), 1], tags=["image", "positions", "index"])
+    >>> item = ListDic([torch.randn([1,3,45,45]), torch.tensor([[0,20],[0,20.]]), 1], names=["image", "positions", "index"])
 
-    >>> print(item[0].shape, item.tags[0])
+    >>> print(item[0].shape, item.names[0])
     # [*] (1,3,45,45), "image"
 
     # supports assigning new keys
@@ -102,9 +102,9 @@ class Item(ListDict):
         private keys may contain any data
 
     Does not enforce typing or require specific type keys.
-    By convention however keys .meta and .dtype will be interpreted by magi augments and datasets
-        .meta: data_2d (tbd ..._1d, _3d) / transforms treated as images
-        .meta: positions_2d (tbd ..._1d, _3d) /transforms treated as positions.
+    By convention however keys .kind and .dtype will be interpreted by magi augments and datasets
+        .kind: data_2d (tbd ..._1d, _3d) / transforms treated as images
+        .kind: pos_2d (tbd ..._1d, _3d) /transforms treated as positions.
         .dtype: if present specific dtypes will be applied to list elements on handling
 
         self -> list
@@ -151,23 +151,23 @@ class Item(ListDict):
             *args       -> list(*args)
             **kwargs    -> {k0:list, k1:list, ...}
         Examples
-            >>> d = Item([torch.randn([1,3,224,224]), 2, 1], tags=['image', 'image_id', 'class_id'])
-            >>> d.keys  # -> ['tags']
+            >>> d = Item([torch.randn([1,3,224,224]), 2, 1], names=['image', 'image_id', 'class_id'])
+            >>> d.keys  # -> ['names']
             >>> d       # -> [torch.Tensor[....], 2, 1]
 
             # add new key, filling every element of list with some info
-            >>> d.meta  # ['image.source...', 'id in dataset', 'class in wordnet']
-            >>> d.keys  # -> ['tags', 'meta']
+            >>> d.kind  # ['image.source...', 'id in dataset', 'class in wordnet']
+            >>> d.keys  # -> ['names', 'kind']
 
             # append new datum, assigning a value to every key
-            >>> d.append([[0,100,200,200]], tags='position', meta='made up foo')
+            >>> d.append([[0,100,200,200]], names='position', kind='made up foo')
             >>> d       # -> [torch.Tensor[....], 2, 1, [[0,100,200,200]]]
-            >>> d.tags  # -> ['image', 'image_id', 'class_id', 'position']
-            >>> d.meta  # -> ['image.source...', 'id in dataset', 'class in wordnet', 'made up foo']
+            >>> d.names  # -> ['image', 'image_id', 'class_id', 'position']
+            >>> d.kind  # -> ['image.source...', 'id in dataset', 'class in wordnet', 'made up foo']
 
             # access elements with key, value:
-            >>> d.get('tags', 'position') -> [ [[0,100,200,200]] ]
-            >>> d.get('meta', 'made up foo') -> [ [[0,100,200,200]] ]
+            >>> d.get('names', 'position') -> [ [[0,100,200,200]] ]
+            >>> d.get('kind', 'made up foo') -> [ [[0,100,200,200]] ]
 
             # clone (item.copy() and item.clone(()) or deepclone (deepcopy(item) and item.clone().detach())
             >>> e = d.deepclone()
@@ -176,10 +176,10 @@ class Item(ListDict):
             # remove all elements except selected in keep, by index
             >>> e.keep(0,1) # or e.keep([0,1])
             >>> e       # -> [torch.Tensor[....], 2]      # list removed indices not in 0,1
-            >>> e.tags  # -> ['image', 'image_id']   # idem for all keys
+            >>> e.names  # -> ['image', 'image_id']   # idem for all keys
 
             # remove all elements except selected in keep, by keyvalue
-            >>> f.keep(meta=['class in wordnet', 'made up foo']) ->
+            >>> f.keep(kind=['class in wordnet', 'made up foo']) ->
             >>> f       # -> [1, [[0,100,200,200]] ]
 
             # convert to torch
@@ -249,13 +249,13 @@ class Item(ListDict):
     def get(self, **kwargs) -> list:
         """ Returns sublist of elements tagged by kwargs by key=[values,..]
         Examples
-        # if self has a 'tags' key, and self.tags has 'name'  and 'date' entries
-        >>> self.get(tags=['name', 'date'])
-            -> all items with 'tags' 'name' or 'date': ie. union of indices
+        # if self has a 'names' key, and self.names has 'name'  and 'date' entries
+        >>> self.get(names=['name', 'date'])
+            -> all items with 'names' 'name' or 'date': ie. union of indices
 
-        # if self also has a 'meta' key and self.meta has entries ['str', 'float']
-        >>> self.get(tags=['name', 'date'], meta=['float'])
-            -> all items with 'tags' 'name' or 'date' that are 'float': intersection of indices
+        # if self also has a 'kind' key and self.kind has entries ['str', 'float']
+        >>> self.get(names=['name', 'date'], kind=['float'])
+            -> all items with 'names' 'name' or 'date' that are 'float': intersection of indices
         """
         return [self[i] for i in self.get_indices(**kwargs)]
 
@@ -375,8 +375,8 @@ class Item(ListDict):
     def append(self, obj: _T, **kwargs) -> None:
         """Appends to self and to lists for each public key, requires entries for each key
         Example
-         if self.keys == ["tags", "info"]
-        >>> self.append(1, tags="one", info="the first number")
+         if self.keys == ["names", "info"]
+        >>> self.append(1, names="one", info="the first number")
         """
         self._assert_keys("append", **kwargs)
         super().append(obj)
@@ -412,8 +412,8 @@ class Item(ListDict):
     def extend(self, iterable: Iterable[_T], **kwargs) -> None:
         """ Extend to self and to lists for each public key, requires entries for each key
         Example
-        if self.keys == ["tags", "info"]
-        >>> self.extend([1, 3.14], tags=["one", "pi"], info=["int", "float"])
+        if self.keys == ["names", "info"]
+        >>> self.extend([1, 3.14], names=["one", "pi"], info=["int", "float"])
         """
         self._assert_keys("extend", **kwargs)
         super().extend(iterable)

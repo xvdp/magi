@@ -73,11 +73,120 @@ yxhwa__path(data)
 yxhwa__splitpath
     alias: xywha__splitpath(0
 """
+from typing import Union, Optional
 import math
 import logging
 import torch
 from koreto import Col
 from .. import config
+
+# pylint: disable=no-member
+
+#
+# Position 2d Targets
+#
+def _shape_assert(x: torch.Tensor, pos: int = 1, shape: tuple = (2,), msg: str = ""):
+    msg = f"{msg} expected pos vector in format (...,*{shape}) got {tuple(x.shape)}"
+    assert x.shape[-pos:] == shape, msg
+
+def ij_ji(x: torch.Tensor) -> torch.Tensor:
+    """row major - col major
+    requires last dimension to be size 2
+    """
+    _shape_assert(x, 1, (2,), "ij_ji")
+    return x.flip(x.ndim-1)
+###
+#
+# BOXES
+#
+def pos_pos__pos_offset(x: torch.Tensor, inplace: bool = False) -> torch.Tensor:
+    """ convert positions box to position offset box
+    io tensor shape (..., 2, 2)
+    """
+    _shape_assert(x, 2, (2, 2), "pos_pos__pos_offset")
+    if not inplace:
+        x = x.clone().detach()
+    x[..., 1, :] = x[..., 1, :].sub(x[..., 0, :])
+    return x
+
+def pos_offset__pos_pos(x: torch.Tensor, inplace: bool = False) -> torch.Tensor:
+    """ convert position offset box to positions box
+    io tensor shape (..., 2, 2)
+    """
+    _shape_assert(x, 2, (2, 2), "pos_offset__pos_pos")
+    if not inplace:
+        x = x.clone().detach()
+    x[..., 1, :] = x[..., 1, :].add(x[..., 0, :])
+    return x
+
+def pos_pos__path(x: torch.Tensor) -> torch.Tensor:
+    """ convert positions box to positions path
+    in tensor shape  (..., 2, 2)
+    out tensor shape (..., 4, 2); out_numel = in_numel*2
+    """
+    _shape_assert(x, 2, (2, 2), "pos_pos__path")
+    paths = x.shape[:-2]
+    order = torch.tensor([0, 1, 2, 1, 2, 3, 0, 3])
+    return x.view(*paths, 4)[..., order].view(*paths[:-2], 4, 2)
+
+def path__pos_pos(x: torch.Tensor) -> torch.Tensor:
+    """ convert positions path to positions box
+    out tensor shape (..., 4, 2)
+    in tensor shape  (..., 2, 2); out_numel = in_numel/2
+    .. does not account for rotations if there are any
+    """
+    _shape_assert(x, 2, (4, 2), "pos_pos__path")
+    return torch.stack((x.min(-2)[0], x.max(-2)[0]), -2)
+
+def pos_pos__center_offset(x: torch.Tensor) -> torch.Tensor:
+    """ convert positions box to center, half offset
+        io tensor shape  (..., 2, 2)
+    """
+    _shape_assert(x, 2, (2, 2), "pos_pos__center_offset")
+    return torch.stack((x.mean(-2), x[...,1,:] - x.mean(-2)), -2)
+
+def center_offset__pos_pos(x: torch.Tensor) -> torch.Tensor:
+    """ center, half offset box to positions
+        io tensor shape  (..., 2, 2)
+    """
+    _shape_assert(x, 2, (2, 2), "center_offset__pos_pos")
+    return torch.stack((x[..., 0, :] - x[..., 1, :], x[..., 0, :] + x[..., 1, :]), -2)
+
+def center_offset__center_offset_angle(x: torch.Tensor, angle: float = 0.0) -> torch.Tensor:
+    """ add angle to center offset
+        in tensor shape  (..., 2, 2)
+        out tensor shape  (..., 5); out_numel = in_numel*5/4
+    """
+    _shape_assert(x, 2, (2, 2), "center_offset__pos_pos")
+    return torch.cat((x.view(*x.shape[:-2], 4),
+                      torch.full((*x.shape[:-2], 1), angle, dtype=x.dtype, device=x.device)), -1)
+
+def center_offset_angle__center_offset(x: torch.Tensor) -> torch.Tensor:
+    """ remove angle from center offset
+    Arg
+        in tensor shape  (..., 5)
+        out tensor shape  (..., 2, 2); out_numel = in_numel*4/5
+    Arg
+    """
+    _shape_assert(x, 1, (5,), "center_offset__pos_pos")
+    return x[...,:4].view(*x.shape[:-1], 2, 2)
+
+
+def center_offset_angle__path(x: torch.Tensor) -> torch.Tensor:
+    """ remove angle from center offset
+    Arg
+        in tensor shape  (..., 5)
+        out tensor shape  (..., 2, 2); out_numel = in_numel*4/5
+    Arg
+    """
+    _shape_assert(x, 1, (5,), "center_offset__pos_pos")
+
+    angles = x[...,4]
+    rot = torch.stack([torch.cos(angles), -torch.sin(angles),
+                       torch.sin(angles), torch.cos(angles)], -1).view(*angles.shape, 2,2)
+    x = pos_pos__path(center_offset__pos_pos(center_offset_angle__center_offset(x)))
+
+    # TODO compute rotations. T(R(T-1(x)))
 # pylint: disable=no-member
 # pylint: disable=not-callable
 
@@ -118,55 +227,55 @@ from .. import config
 #         return [type(item) for item in self]
 
 
-def assert_tensor_list_eq(tensor_list, tolerant=False):
-    shapes = [t.shape for t in tensor_list]
-    devices = [t.device for t in tensor_list]
-    dtypes = [t.dtype for t in tensor_list]
+# def assert_tensor_list_eq(tensor_list, tolerant=False):
+#     shapes = [t.shape for t in tensor_list]
+#     devices = [t.device for t in tensor_list]
+#     dtypes = [t.dtype for t in tensor_list]
 
-    toshape = None
-    todtype = None
-    todevice = None
+#     toshape = None
+#     todtype = None
+#     todevice = None
 
-    if not tolerant:
-        assert all(shapes[0] == d for d in shapes), "all shapes need to be the same, got %s"%str(shapes)
-        assert all(dtypes[0] == d for d in dtypes), "all dtypes need to be the same, got %s"%str(dtypes)
-        assert all(devices[0] == d for d in devices), "all devices need to be the same, got %s"%str(devices)
+#     if not tolerant:
+#         assert all(shapes[0] == d for d in shapes), "all shapes need to be the same, got %s"%str(shapes)
+#         assert all(dtypes[0] == d for d in dtypes), "all dtypes need to be the same, got %s"%str(dtypes)
+#         assert all(devices[0] == d for d in devices), "all devices need to be the same, got %s"%str(devices)
 
-    else:
-        if not all(shapes[0] == d for d in shapes):
-            assert all(len(shapes[0]) == len(d) for d in shapes), "all shapes need to be length got %s"%str(shapes)
-            _shapes = {item:shapes.count(item) for item in shapes}
-            toshape = list(_shapes.keys())[list(_shapes.values()).index(max(_shapes.values()))]
+#     else:
+#         if not all(shapes[0] == d for d in shapes):
+#             assert all(len(shapes[0]) == len(d) for d in shapes), "all shapes need to be length got %s"%str(shapes)
+#             _shapes = {item:shapes.count(item) for item in shapes}
+#             toshape = list(_shapes.keys())[list(_shapes.values()).index(max(_shapes.values()))]
 
-        if not all(dtypes[0] == d for d in dtypes):
-            _dtypes = {item:dtypes.count(item) for item in dtypes}
-            todtype = list(_dtypes.keys())[list(_dtypes.values()).index(max(_dtypes.values()))]
+#         if not all(dtypes[0] == d for d in dtypes):
+#             _dtypes = {item:dtypes.count(item) for item in dtypes}
+#             todtype = list(_dtypes.keys())[list(_dtypes.values()).index(max(_dtypes.values()))]
 
-        if not all(devices[0] == d for d in devices):
-            _devices = {item:devices.count(item) for item in devices}
-            todevice = list(_devices.keys())[list(_devices.values()).index(max(_devices.values()))]
-    return toshape, todtype, todevice
+#         if not all(devices[0] == d for d in devices):
+#             _devices = {item:devices.count(item) for item in devices}
+#             todevice = list(_devices.keys())[list(_devices.values()).index(max(_devices.values()))]
+#     return toshape, todtype, todevice
 
-def assert_tensor_type(data, dtype=None):
-    _msg = "expected dtype %s, got %s: tensor %s"%(str(dtype), str(data.dtype), str(data.shape))
-    assert dtype is None or dtype == data.dtype, _msg
+# def assert_tensor_type(data, dtype=None):
+#     _msg = "expected dtype %s, got %s: tensor %s"%(str(dtype), str(data.dtype), str(data.shape))
+#     assert dtype is None or dtype == data.dtype, _msg
 
-def assert_tensor_grad(data, grad=None):
-    _msg = "expected requires_grad %s, got %s: tensor %s"%(str(grad), str(data.requires_grad),
-                                                           str(data.shape))
-    assert grad is None or grad == data.requires_grad, _msg
+# def assert_tensor_grad(data, grad=None):
+#     _msg = "expected requires_grad %s, got %s: tensor %s"%(str(grad), str(data.requires_grad),
+#                                                            str(data.shape))
+#     assert grad is None or grad == data.requires_grad, _msg
 
-def assert_tensor_device(data, device=None):
-    _msg = "expected device %s, got %s: tensor %s"%(device, data.requires_grad, str(data.shape))
-    assert device is None or device == data.device, _msg
+# def assert_tensor_device(data, device=None):
+#     _msg = "expected device %s, got %s: tensor %s"%(device, data.requires_grad, str(data.shape))
+#     assert device is None or device == data.device, _msg
 
-def get_tensor_size(data):
-    """computes size of tensor in memory
-    """
-    size = data.numel() * data.element_size()
-    if data.requires_grad:
-        size *= 2
-    return size
+# def get_tensor_size(data):
+#     """computes size of tensor in memory
+#     """
+#     size = data.numel() * data.element_size()
+#     if data.requires_grad:
+#         size *= 2
+#     return size
 
 
 
@@ -357,249 +466,249 @@ def _copy_tensor_options(src, dst):
     dst.to(device=src.device)
     dst.requires_grad = src.requires_grad
 
-def order_tensor(data, from_order, to_order):
-    """
-    this outght to be done with a net or object inheriting classes
-    """
-    dic = {
-        ("yx_hw", "yx_yx"): yx_hw__yx_yx,
-        ("xy_wh", "xy_xy"): yx_hw__yx_yx,
-        ("yx_hw", "yxyx"): yx_hw__yxyx,
-        ("xy_wh", "xyxy"): yx_hw__yxyx,
-        ("yx_hw", "path"): yx_hw__path,
-        ("xy_wh", "path"): yx_hw__path,
-        ("yx_hw", "splitpath"): yx_hw__splitpath,
-        ("xy_wh", "splitpath"): yx_hw__splitpath,
-        ("yx_hw", "yxhwa"): yx_hw__yxhwa,
-        ("xy_wh", "xywha"): yx_hw__yxhwa,
-        ("xy_xy", "yx_yx"): yx_yx__xy_xy,
-        ("yx_yx", "xy_xy"): yx_yx__xy_xy,
-        ("yxyx", "xyxy"): yx_yx__xy_xy,
-        ("xyxy", "yxyx"): yx_yx__xy_xy,
-        ("xy_xy", "xyxy"): yx_yx__yxyx,
-        ("yx_yx", "yxyx"): yx_yx__yxyx,
-        ("yxyx", "yx_yx"): yxyx__yx_yx,
-        ("xyxy", "xy_xy"): yxyx__yx_yx,
-        ("yx_yx", "yx_hw"): yx_yx__yx_hw,
-        ("xy_xy", "xy_wh"): yx_yx__yx_hw,
-        ("yxyx", "path"): yxyx__path,
-        ("xyxy", "path"): yxyx__path,
-        ("yxyx", "splitpath"): yxyx__splitpath,
-        ("xyxy", "splitpath"): yxyx__splitpath,
-        ("splitpath", "yx_yx"): splitpath__yx_yx,
-        ("splitpath", "xy_xy"): splitpath__yx_yx,
-        ("path", "yxyx"): path__yxyx,
-        ("path", "xyxy"): path__yxyx,
-        ("yx_yx", "yy_xx"): yx_yx__yy_xx,
-        ("xy_xy", "xx_yy"): yx_yx__yy_xx,
-        ("yy_xx", "yx_yx"): yy_xx__yx_yx,
-        ("xx_yy", "xy_xy"): yy_xx__yx_yx,
-        ("yxhw", "yxhwa"): yxhw__yxhwa,
-        ("xywh", "xywha"): yxhw__yxhwa,
-        ("yxyx", "yxhwa"): yxyx__yxhwa,
-        ("xyxy", "xywha"): yxyx__yxhwa,
-        ("yx_yx", "yxhwa"): yx_yx__yxhwa,
-        ("xy_xy", "xywha"): yx_yx__yxhwa,
-        ("yxhwa", "yxhw"): yxhwa__yxhw,
-        ("xywha", "xywh"): yxhwa__yxhw,
-        ("yxhwa", "path"): yxhwa__path,
-        ("xywha", "path"): yxhwa__path,
-        ("yxhwa", "splitpath"): yxhwa__splitpath,
-        ("xywha", "splitpath"): yxhwa__splitpath,
+# def order_tensor(data, from_order, to_order):
+#     """
+#     this outght to be done with a net or object inheriting classes
+#     """
+#     dic = {
+#         ("yx_hw", "yx_yx"): yx_hw__yx_yx,
+#         ("xy_wh", "xy_xy"): yx_hw__yx_yx,
+#         ("yx_hw", "yxyx"): yx_hw__yxyx,
+#         ("xy_wh", "xyxy"): yx_hw__yxyx,
+#         ("yx_hw", "path"): yx_hw__path,
+#         ("xy_wh", "path"): yx_hw__path,
+#         ("yx_hw", "splitpath"): yx_hw__splitpath,
+#         ("xy_wh", "splitpath"): yx_hw__splitpath,
+#         ("yx_hw", "yxhwa"): yx_hw__yxhwa,
+#         ("xy_wh", "xywha"): yx_hw__yxhwa,
+#         ("xy_xy", "yx_yx"): yx_yx__xy_xy,
+#         ("yx_yx", "xy_xy"): yx_yx__xy_xy,
+#         ("yxyx", "xyxy"): yx_yx__xy_xy,
+#         ("xyxy", "yxyx"): yx_yx__xy_xy,
+#         ("xy_xy", "xyxy"): yx_yx__yxyx,
+#         ("yx_yx", "yxyx"): yx_yx__yxyx,
+#         ("yxyx", "yx_yx"): yxyx__yx_yx,
+#         ("xyxy", "xy_xy"): yxyx__yx_yx,
+#         ("yx_yx", "yx_hw"): yx_yx__yx_hw,
+#         ("xy_xy", "xy_wh"): yx_yx__yx_hw,
+#         ("yxyx", "path"): yxyx__path,
+#         ("xyxy", "path"): yxyx__path,
+#         ("yxyx", "splitpath"): yxyx__splitpath,
+#         ("xyxy", "splitpath"): yxyx__splitpath,
+#         ("splitpath", "yx_yx"): splitpath__yx_yx,
+#         ("splitpath", "xy_xy"): splitpath__yx_yx,
+#         ("path", "yxyx"): path__yxyx,
+#         ("path", "xyxy"): path__yxyx,
+#         ("yx_yx", "yy_xx"): yx_yx__yy_xx,
+#         ("xy_xy", "xx_yy"): yx_yx__yy_xx,
+#         ("yy_xx", "yx_yx"): yy_xx__yx_yx,
+#         ("xx_yy", "xy_xy"): yy_xx__yx_yx,
+#         ("yxhw", "yxhwa"): yxhw__yxhwa,
+#         ("xywh", "xywha"): yxhw__yxhwa,
+#         ("yxyx", "yxhwa"): yxyx__yxhwa,
+#         ("xyxy", "xywha"): yxyx__yxhwa,
+#         ("yx_yx", "yxhwa"): yx_yx__yxhwa,
+#         ("xy_xy", "xywha"): yx_yx__yxhwa,
+#         ("yxhwa", "yxhw"): yxhwa__yxhw,
+#         ("xywha", "xywh"): yxhwa__yxhw,
+#         ("yxhwa", "path"): yxhwa__path,
+#         ("xywha", "path"): yxhwa__path,
+#         ("yxhwa", "splitpath"): yxhwa__splitpath,
+#         ("xywha", "splitpath"): yxhwa__splitpath,
 
-        ("xy_wh", "xx_yy"): yx_hw__yy_xx,
-        ("yx_hw", "yy_xx"): yx_hw__yy_xx,
-        ("xx_yy", "xy_wh"): yy_xx__yx_hw,
-        ("yy_xx", "yx_hw"): yy_xx__yx_hw
-        }
-    if (from_order, to_order) in dic:
-        data = dic[(from_order, to_order)](data)
-    else:
-        print("'%s' to '%s' conversion not suported, nothing converted, supported: %s"%
-              (from_order, to_order, str(dic.keys())))
-    return data
+#         ("xy_wh", "xx_yy"): yx_hw__yy_xx,
+#         ("yx_hw", "yy_xx"): yx_hw__yy_xx,
+#         ("xx_yy", "xy_wh"): yy_xx__yx_hw,
+#         ("yy_xx", "yx_hw"): yy_xx__yx_hw
+#         }
+#     if (from_order, to_order) in dic:
+#         data = dic[(from_order, to_order)](data)
+#     else:
+#         print("'%s' to '%s' conversion not suported, nothing converted, supported: %s"%
+#               (from_order, to_order, str(dic.keys())))
+#     return data
 
-def yx_yx__xy_xy(data):
-    """ or yxyx__xyxy
-    io tensor shape (..., 2, 2)
-    """
-    #return flip(data, data.ndimension()-1)
-    return data.flip(data.ndimension()-1)
+# def yx_yx__xy_xy(data):
+#     """ or yxyx__xyxy
+#     io tensor shape (..., 2, 2)
+#     """
+#     #return flip(data, data.ndimension()-1)
+#     return data.flip(data.ndimension()-1)
 
-def yx_yx__yxyx(data):
-    """
-    in tensor  (..., items, dims)
-    out tensor (..., items*dims)
-    """
-    _sh = list(data.shape)
-    _sh[-2] *= _sh[-1]
-    _sh = _sh[:-1]
-    return data.view(*_sh)
+# def yx_yx__yxyx(data):
+#     """
+#     in tensor  (..., items, dims)
+#     out tensor (..., items*dims)
+#     """
+#     _sh = list(data.shape)
+#     _sh[-2] *= _sh[-1]
+#     _sh = _sh[:-1]
+#     return data.view(*_sh)
 
-def yxyx__yx_yx(data, dims=2):
-    """
-    out tensor shape (n, items, dims)
-    """
-    _sh = list(data.shape)
-    _it = _sh[-1]//dims
-    _sh = _sh[:-1] + [_it, dims]
-    return data.view(*_sh)
+# def yxyx__yx_yx(data, dims=2):
+#     """
+#     out tensor shape (n, items, dims)
+#     """
+#     _sh = list(data.shape)
+#     _it = _sh[-1]//dims
+#     _sh = _sh[:-1] + [_it, dims]
+#     return data.view(*_sh)
 
-def yx_yx__yx_hw(data):
-    """xy_xy__xy_wh
-    io tensor shape (..., 2, 2)
-    """
-    _data = data.clone().detach()
-    _data[:, 1].sub_(_data[:, 0])
-    return _data
+# def yx_yx__yx_hw(data):
+#     """xy_xy__xy_wh
+#     io tensor shape (..., 2, 2)
+#     """
+#     _data = data.clone().detach()
+#     _data[:, 1].sub_(_data[:, 0])
+#     return _data
 
-def yx_hw__yx_yx(data):
-    """or xy_wh__xy_xy
-    io tensor shape (n, 2, 2)
-    """
-    _data = data.clone().detach()
-    _data[:, 1].add_(_data[:, 0])
-    return _data
+# def yx_hw__yx_yx(data):
+#     """or xy_wh__xy_xy
+#     io tensor shape (n, 2, 2)
+#     """
+#     _data = data.clone().detach()
+#     _data[:, 1].add_(_data[:, 0])
+#     return _data
 
-def yx_hw__yxyx(data):
-    """or xy_hw__xyxy
-    io tensor shape (n, 2, 2)
-    """
-    return yx_yx__yxyx(yx_hw__yx_yx(data))
+# def yx_hw__yxyx(data):
+#     """or xy_hw__xyxy
+#     io tensor shape (n, 2, 2)
+#     """
+#     return yx_yx__yxyx(yx_hw__yx_yx(data))
 
-def yx_hw__path(data):
-    return yxyx__path(yx_yx__yxyx(yx_hw__yx_yx(data)))
+# def yx_hw__path(data):
+#     return yxyx__path(yx_yx__yxyx(yx_hw__yx_yx(data)))
 
-def yx_hw__splitpath(data):
-    return yx_hw__path(data).reshape(-1, 4, 2)
+# def yx_hw__splitpath(data):
+#     return yx_hw__path(data).reshape(-1, 4, 2)
 
-def yx_hw__yxhwa(data):
-    return yxhw__yxhwa(yx_yx__yxyx(data))
+# def yx_hw__yxhwa(data):
+#     return yxhw__yxhwa(yx_yx__yxyx(data))
 
-def yxyx__path(data):
-    return data[..., torch.LongTensor([0, 1, 2, 1, 2, 3, 0, 3])]
+# def yxyx__path(data):
+#     return data[..., torch.LongTensor([0, 1, 2, 1, 2, 3, 0, 3])]
 
-def yxyx__splitpath(data):
-    return yxyx__path(data).reshape(-1, 4, 2)
+# def yxyx__splitpath(data):
+#     return yxyx__path(data).reshape(-1, 4, 2)
 
-def splitpath__yx_yx(data):
-    return torch.stack((data.min(1)[0], data.max(1)[0]), 1)
+# def splitpath__yx_yx(data):
+#     return torch.stack((data.min(1)[0], data.max(1)[0]), 1)
 
-def path__yxyx(data):
-    return yx_yx__yxyx(torch.stack((data.min(1)[0], data.max(1)[0]), 1))
+# def path__yxyx(data):
+#     return yx_yx__yxyx(torch.stack((data.min(1)[0], data.max(1)[0]), 1))
 
-def yx_yx__yy_xx(data):
-    """
-    input data of shape  (n, items, dim)
-    output data of shape (dim, n*items), items
-    [[[y,x],[y1,x1]],[[y2,x2],[y3,x3]],...] to [[y,y1,y2,...],[x,x1,x2,...]]
-    where
-        dims = [x,y,...]
-        items = [y,x],[y1,x1],...
-        num = [[y,x],[y1,x1]],[[y2,x2],[y3,x3]],...
-    for dim, items, num > 0
-    eg. 3d
-    [[[y,x,z],[y1,x1,z1]],[[y2,x2,z2],[y3,x3,z3]],...]
-        to [[y,y1,y2,...],[x,x1,x2,...],[z,z1,z2,...]]
+# def yx_yx__yy_xx(data):
+#     """
+#     input data of shape  (n, items, dim)
+#     output data of shape (dim, n*items), items
+#     [[[y,x],[y1,x1]],[[y2,x2],[y3,x3]],...] to [[y,y1,y2,...],[x,x1,x2,...]]
+#     where
+#         dims = [x,y,...]
+#         items = [y,x],[y1,x1],...
+#         num = [[y,x],[y1,x1]],[[y2,x2],[y3,x3]],...
+#     for dim, items, num > 0
+#     eg. 3d
+#     [[[y,x,z],[y1,x1,z1]],[[y2,x2,z2],[y3,x3,z3]],...]
+#         to [[y,y1,y2,...],[x,x1,x2,...],[z,z1,z2,...]]
 
-    """
-    num, items, dims = data.shape
-    return torch.cat([data[:, :, i].view(num, -1) for i in range(dims)]).contiguous(), items
+#     """
+#     num, items, dims = data.shape
+#     return torch.cat([data[:, :, i].view(num, -1) for i in range(dims)]).contiguous(), items
 
-def yy_xx__yx_yx(data, items):
-    """
-    inptut  data of shape (dim, n*items), items
-    output data of shape  (n, items, dim)
+# def yy_xx__yx_yx(data, items):
+#     """
+#     inptut  data of shape (dim, n*items), items
+#     output data of shape  (n, items, dim)
 
-    [[y,y1,y2,...],[x,x1,x2,...]] to [[[y,x],[y1,x1]],[[y2,x2],[y3,x3]],...]
-    where
-        dims = [x,y,...]
-        items = [y,x],[y1,x1],...
-        num = [[y,x],[y1,x1]],[[y2,x2],[y3,x3]],...
-    for dim, items, num > 0
-    """
-    return torch.stack([datum.view(-1, items) for datum in data], dim=items).contiguous()
+#     [[y,y1,y2,...],[x,x1,x2,...]] to [[[y,x],[y1,x1]],[[y2,x2],[y3,x3]],...]
+#     where
+#         dims = [x,y,...]
+#         items = [y,x],[y1,x1],...
+#         num = [[y,x],[y1,x1]],[[y2,x2],[y3,x3]],...
+#     for dim, items, num > 0
+#     """
+#     return torch.stack([datum.view(-1, items) for datum in data], dim=items).contiguous()
 
-def yx_hw__yy_xx(data):
-    return yx_yx__yy_xx(yx_hw__yx_yx(data))
+# def yx_hw__yy_xx(data):
+#     return yx_yx__yy_xx(yx_hw__yx_yx(data))
     
-def yy_xx__yx_hw(data, items):
-    return yx_yx__yx_hw(yy_xx__yx_yx(data, items))
+# def yy_xx__yx_hw(data, items):
+#     return yx_yx__yx_hw(yy_xx__yx_yx(data, items))
 
-def yxhw__yxhwa(data, angle=0):
-    """ bounding box to center half width, angle
-    in tensor  (..., 4)
-    out tensor (..., 5)
-    """
-    _dt = data.dtype
-    _sh = list(data.shape)
-    _d1 = data.view(-1, _sh[-1])
-    if data.dtype not in (torch.half, torch.float, torch.double):
-        print("angles require scalar type, converting to float")
-        _dt = torch.float
-        _d1 = _d1.to(dtype=torch.float)
+# def yxhw__yxhwa(data, angle=0):
+#     """ bounding box to center half width, angle
+#     in tensor  (..., 4)
+#     out tensor (..., 5)
+#     """
+#     _dt = data.dtype
+#     _sh = list(data.shape)
+#     _d1 = data.view(-1, _sh[-1])
+#     if data.dtype not in (torch.half, torch.float, torch.double):
+#         print("angles require scalar type, converting to float")
+#         _dt = torch.float
+#         _d1 = _d1.to(dtype=torch.float)
 
-    _sh[-1] += 1
-    _data = torch.zeros(*_sh, dtype=_dt, device=data.device,
-                        requires_grad=data.requires_grad).view(-1, _sh[-1])
+#     _sh[-1] += 1
+#     _data = torch.zeros(*_sh, dtype=_dt, device=data.device,
+#                         requires_grad=data.requires_grad).view(-1, _sh[-1])
 
-    _data[:, 2:4].add_(_d1[:, 2:]/2)
-    _data[:, :2].add_(_d1[:, :2] + _d1[:, 2:]/2)
-    _data[:, 4] = angle
-    return _data.view(_sh)
+#     _data[:, 2:4].add_(_d1[:, 2:]/2)
+#     _data[:, :2].add_(_d1[:, :2] + _d1[:, 2:]/2)
+#     _data[:, 4] = angle
+#     return _data.view(_sh)
 
-def yx_yx__yxhwa(data, angle=0):
-    """ bounding box to center half width, angle
-    in tensor  (..., 2, 2)
-    out tensor (..., 5)
-    """
-    return yxhw__yxhwa(yx_yx__yxyx(yx_yx__yx_hw(data)), angle)
+# def yx_yx__yxhwa(data, angle=0):
+#     """ bounding box to center half width, angle
+#     in tensor  (..., 2, 2)
+#     out tensor (..., 5)
+#     """
+#     return yxhw__yxhwa(yx_yx__yxyx(yx_yx__yx_hw(data)), angle)
 
-def yxyx__yxhwa(data, angle=0):
-    """ bounding box to center half width, angle
-    in tensor  (..., 4)
-    out tensor (..., 5)
-    """
-    return yx_yx__yxhwa(yxyx__yx_yx(data), angle)
+# def yxyx__yxhwa(data, angle=0):
+#     """ bounding box to center half width, angle
+#     in tensor  (..., 4)
+#     out tensor (..., 5)
+#     """
+#     return yx_yx__yxhwa(yxyx__yx_yx(data), angle)
 
-def yxhwa__yxhw(data):
-    """ center(y,x) half(h,w), angle to bounding box
-    in tensor  (..., 5)
-    out tensor (..., 4)
-    """
-    _a = torch.fmod(data[..., -1], math.pi)/math.pi
-    _a.mul_(-1).add_(0.5).mul_(2).abs_()
-    _h = data[..., 2]*_a + data[..., 3]*(1 - _a)
-    _w = data[..., 3]*_a + data[..., 2]*(1 - _a)
+# def yxhwa__yxhw(data):
+#     """ center(y,x) half(h,w), angle to bounding box
+#     in tensor  (..., 5)
+#     out tensor (..., 4)
+#     """
+#     _a = torch.fmod(data[..., -1], math.pi)/math.pi
+#     _a.mul_(-1).add_(0.5).mul_(2).abs_()
+#     _h = data[..., 2]*_a + data[..., 3]*(1 - _a)
+#     _w = data[..., 3]*_a + data[..., 2]*(1 - _a)
 
-    _y = data[..., 0] - _h
-    _x = data[..., 1] - _w
+#     _y = data[..., 0] - _h
+#     _x = data[..., 1] - _w
 
-    _sh = list(data.shape)
-    _sh[-1] -= 1
+#     _sh = list(data.shape)
+#     _sh[-1] -= 1
 
-    _data = torch.zeros(*_sh, dtype=data.dtype, device=data.device,
-                        requires_grad=data.requires_grad)
-    _data[..., 0].add_(_y)
-    _data[..., 1].add_(_x)
-    _data[..., 2].add_(_h*2)
-    _data[..., 3].add_(_w*2)
+#     _data = torch.zeros(*_sh, dtype=data.dtype, device=data.device,
+#                         requires_grad=data.requires_grad)
+#     _data[..., 0].add_(_y)
+#     _data[..., 1].add_(_x)
+#     _data[..., 2].add_(_h*2)
+#     _data[..., 3].add_(_w*2)
 
-    return _data
+#     return _data
 
-def yxhwa__yx_hw(data):
-    """ center(y,x) half(h,w), angle to bounding box
-    in tensor  (..., 5)
-    out tensor (..., 2, 2)
-    """
-    return yxyx__yx_yx(yxhwa__yxhw(data))
+# def yxhwa__yx_hw(data):
+#     """ center(y,x) half(h,w), angle to bounding box
+#     in tensor  (..., 5)
+#     out tensor (..., 2, 2)
+#     """
+#     return yxyx__yx_yx(yxhwa__yxhw(data))
 
-def yxhwa__yx_yx(data):
-    """ center(y,x) half(h,w), angle to bounding box
-    in tensor  (..., 5)
-    out tensor (..., 2, 2)
-    """
-    return yx_hw__yx_yx(yxhwa__yx_hw(data))
+# def yxhwa__yx_yx(data):
+#     """ center(y,x) half(h,w), angle to bounding box
+#     in tensor  (..., 5)
+#     out tensor (..., 2, 2)
+#     """
+#     return yx_hw__yx_yx(yxhwa__yx_hw(data))
 
 def yxhwa__path(data):
     """ center(y,x) half(h,w), angle to path
@@ -688,40 +797,40 @@ def _rad_to_deg(angle):
 
 #aliases
 
-#flip dimensions
-xy_xy__yx_yx = yx_yx__xy_xy
-xyxy__yxyx = yx_yx__xy_xy
-yxyx__xyxy = yx_yx__xy_xy
-xy_xy__xyxy = yx_yx__yxyx
-xyxy__xy_xy = yxyx__yx_yx
+# #flip dimensions
+# xy_xy__yx_yx = yx_yx__xy_xy
+# xyxy__yxyx = yx_yx__xy_xy
+# yxyx__xyxy = yx_yx__xy_xy
+# xy_xy__xyxy = yx_yx__yxyx
+# xyxy__xy_xy = yxyx__yx_yx
 
-# absolute to/from relative
-xy_xy__xy_wh = yx_yx__yx_hw
-xy_wh__xy_xy = yx_hw__yx_yx
-xy_wh__xyxy = yx_hw__yxyx
+# # absolute to/from relative
+# xy_xy__xy_wh = yx_yx__yx_hw
+# xy_wh__xy_xy = yx_hw__yx_yx
+# xy_wh__xyxy = yx_hw__yxyx
 
-# aboslute to/from path
-xyxy__path = yxyx__path
-xyxy__splitpath = yxyx__splitpath
-splitpath__xy_xy = splitpath__yx_yx
-path__xyxy = path__yxyx
+# # aboslute to/from path
+# xyxy__path = yxyx__path
+# xyxy__splitpath = yxyx__splitpath
+# splitpath__xy_xy = splitpath__yx_yx
+# path__xyxy = path__yxyx
 
-#to and from center size angle
-xywh__xywha = yxhw__yxhwa
-xyxy__xywha = yxyx__yxhwa
-xy_xy__xywha = yx_yx__yxhwa
+# #to and from center size angle
+# xywh__xywha = yxhw__yxhwa
+# xyxy__xywha = yxyx__yxhwa
+# xy_xy__xywha = yx_yx__yxhwa
 
-xywha__xywh = yxhwa__yxhw
-xywha__xy_wh = yxhwa__yx_hw
-xywha__path = yxhwa__path
-xywha__splitpath = yxhwa__splitpath
+# xywha__xywh = yxhwa__yxhw
+# xywha__xy_wh = yxhwa__yx_hw
+# xywha__path = yxhwa__path
+# xywha__splitpath = yxhwa__splitpath
 
-xy_xy__xx_yy = yx_yx__yy_xx
-xx_yy__xy_xy = yy_xx__yx_yx
+# xy_xy__xx_yy = yx_yx__yy_xx
+# xx_yy__xy_xy = yy_xx__yx_yx
 
-xy_wh__path = yx_hw__path
-xy_wh__splitpath: yx_hw__splitpath
-xy_wh__xywha = yx_hw__yxhwa
+# xy_wh__path = yx_hw__path
+# xy_wh__splitpath: yx_hw__splitpath
+# xy_wh__xywha = yx_hw__yxhwa
 
-xy_wh__xx_yy = yx_hw__yy_xx
-xx_yy__xy_wh = yy_xx__yx_hw
+# xy_wh__xx_yy = yx_hw__yy_xx
+# xx_yy__xy_wh = yy_xx__yx_hw
