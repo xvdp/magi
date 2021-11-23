@@ -19,7 +19,7 @@ class TypedItemBase:
         if lens:
             assert all([l == lens[0] for l in lens]), f"all keys must have same len, found {list(zip(kwargs.keys(), lens))}"
             for key, val in kwargs.items():
-                assert all([isinstance(s, str) for s in val]), f"{key}=<> expected <str> list, found, {[type(s) for s in val]}"
+                assert all([s is None or isinstance(s, str) for s in val]), f"{key}=<> expected <str> list, found, {[type(s) for s in val]}"
 
         self.__dict__.update(**kwargs)
 
