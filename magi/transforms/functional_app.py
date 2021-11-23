@@ -14,28 +14,25 @@ Functionals
 
 """
 from typing import Union, Optional
-import numpy as np
 import torch
 
-from ..features import Item
 from ..utils import to_saturation, get_broadcastable, broadcast_tensors, tensor_apply_vals
-from .functional_base import transform, transform_profile, p_all, p_none, get_sample_like, get_bernoulli_like
+from .functional_base import transform, transform_profile, Tensorish, TensorItem
+from .functional_base import p_all, p_none, get_sample_like, get_bernoulli_like
 
-_tensorish = (int, float, list, tuple, np.ndarray, torch.Tensor, type)
-_Tensorish = Union[_tensorish]
-_TensorItem = Union[torch.Tensor, Item]
+
 # pylint: disable=no-member
 
 ###
 #
 # functional for Normalize or MeanCenter
 #
-def normalize(data: _TensorItem,
-              mean: _Tensorish,
-              std: _Tensorish,
-              p: _Tensorish = 1,
+def normalize(data: TensorItem,
+              mean: Tensorish,
+              std: Tensorish,
+              p: Tensorish = 1,
               for_display: bool = False,
-              profile: bool = False) -> _TensorItem:
+              profile: bool = False) -> TensorItem:
     """  normalize item or tensor | profile memory optional
     Args
         data        tensor | Item
@@ -54,9 +51,9 @@ def normalize(data: _TensorItem,
                       p=p)
 
 def normalize_tensor(x: torch.Tensor,
-                     mean: _Tensorish,
-                     std: _Tensorish,
-                     p: _Tensorish=1) -> torch.Tensor:
+                     mean: Tensorish,
+                     std: Tensorish,
+                     p: Tensorish=1) -> torch.Tensor:
     """
     Args
         x           tensor
@@ -89,12 +86,12 @@ def normalize_proc(x: torch.Tensor,
 #
 # functional for UnNormalize or UnMeanCenter
 #
-def unnormalize(data: _TensorItem,
-                mean: _Tensorish,
-                std: _Tensorish,
-                p: Union[type, _Tensorish] = 1,
+def unnormalize(data: TensorItem,
+                mean: Tensorish,
+                std: Tensorish,
+                p: Union[type, Tensorish] = 1,
                 for_display: bool = False,
-                profile: bool = False)-> _TensorItem:
+                profile: bool = False)-> TensorItem:
     """  unnormalize item or tensor | profile memory optional """
     p = get_bernoulli_like(p, like=data)
     mean = get_sample_like(mean, like=data)
@@ -106,10 +103,10 @@ def unnormalize(data: _TensorItem,
                       p=p)
 
 def unnormalize_tensor(x: torch.Tensor,
-                       mean: _Tensorish,
-                       std: _Tensorish,
+                       mean: Tensorish,
+                       std: Tensorish,
                        clip: bool = False,
-                       p: _Tensorish = 1) -> torch.Tensor:
+                       p: Tensorish = 1) -> torch.Tensor:
     """
     Args
         x           tensor
@@ -129,8 +126,8 @@ def unnormalize_tensor(x: torch.Tensor,
     return torch.lerp(x, unnormalize_tensor_proc(x, mean, std, clip, inplace=True), p)
 
 def unnormalize_tensor_proc(x: torch.Tensor,
-                            mean: _Tensorish,
-                            std: _Tensorish,
+                            mean: Tensorish,
+                            std: Tensorish,
                             clip: bool = True,
                             inplace: Optional[bool] = None) -> torch.Tensor:
 
@@ -147,12 +144,12 @@ def unnormalize_tensor_proc(x: torch.Tensor,
 #
 # functional for NormToRange
 #
-def normtorange(data: _TensorItem,
-                minimum: Union[type, _Tensorish] = 0,
-                maximum: Union[type, _Tensorish] = 1,
-                p: Union[type, _Tensorish] = 1,
+def normtorange(data: TensorItem,
+                minimum: Union[type, Tensorish] = 0,
+                maximum: Union[type, Tensorish] = 1,
+                p: Union[type, Tensorish] = 1,
                 for_display: bool = False,
-                profile: bool = False) -> _TensorItem:
+                profile: bool = False) -> TensorItem:
     """  normalize item or tensor | profile memory optional
     Args
         data        Item | tensor
@@ -171,9 +168,9 @@ def normtorange(data: _TensorItem,
                       maximum=maximum, p=p)
 
 def normtorange_tensor(x: torch.Tensor,
-                       minimum: _Tensorish,
-                       maximum: _Tensorish,
-                       p: _Tensorish = 1) -> torch.Tensor:
+                       minimum: Tensorish,
+                       maximum: Tensorish,
+                       p: Tensorish = 1) -> torch.Tensor:
     """
     Args
         x           (tensor)
@@ -229,11 +226,11 @@ def normtorange_proc(x: torch.Tensor,
 #
 # functional for Saturate
 #
-def saturate(data: _TensorItem,
+def saturate(data: TensorItem,
              sat: Union[int, float, torch.Tensor, type],
              p: Union[int, torch.Tensor, type] = 1,
              for_display: bool = False,
-             profile: bool = False)->  _TensorItem:
+             profile: bool = False)->  TensorItem:
 
     p = get_bernoulli_like(p, like=data[0])
     sat = get_sample_like(sat, like=data[0])
@@ -274,12 +271,12 @@ def saturate_tensor(x: torch.Tensor, sat: torch.Tensor, p: torch.Tensor) -> torc
 #
 # functional for Gamma
 #
-def gamma(data: _TensorItem,
-                value: Union[type, _Tensorish] = 1,
-                p: Union[type, _Tensorish] = 1,
-                from_gamma: _Tensorish = 2.2,
+def gamma(data: TensorItem,
+                value: Union[type, Tensorish] = 1,
+                p: Union[type, Tensorish] = 1,
+                from_gamma: Tensorish = 2.2,
                 for_display: bool = False,
-                profile: bool = False) -> _TensorItem:
+                profile: bool = False) -> TensorItem:
     """  normalize item or tensor | profile memory optional
     Args
         data        Item | tensor
@@ -300,7 +297,7 @@ def gamma(data: _TensorItem,
 
 def gamma_tensor(x: torch.Tensor,
                  values: torch.Tensor, p: torch.Tensor,
-                 from_gamma: _Tensorish = 2.2) -> torch.Tensor:
+                 from_gamma: Tensorish = 2.2) -> torch.Tensor:
     """
     """
     p = get_bernoulli_like(p, like=x)
@@ -326,12 +323,12 @@ def gamma_proc(x, values=1.0, from_gamma=2.2, inplace: Optional[bool] = None):
 #
 # functional for SoftClamp
 #
-def softclamp(data: _TensorItem,
-                soft: Union[type, _Tensorish] = 1,
-                p: Union[type, _Tensorish] = 1,
-                inflection: Union[type, _Tensorish] = 0.5,
+def softclamp(data: TensorItem,
+                soft: Union[type, Tensorish] = 1,
+                p: Union[type, Tensorish] = 1,
+                inflection: Union[type, Tensorish] = 0.5,
                 for_display: bool = False,
-                profile: bool = False) -> _TensorItem:
+                profile: bool = False) -> TensorItem:
     """  normalize item or tensor | profile memory optional
     Args
         data        Item | tensor
@@ -351,7 +348,7 @@ def softclamp(data: _TensorItem,
 def softclamp_tensor(x: torch.Tensor,
                  soft: Union[float, int],
                  p: torch.Tensor,
-                 inflection: Union[type, _Tensorish] = 0.5) -> torch.Tensor:
+                 inflection: Union[type, Tensorish] = 0.5) -> torch.Tensor:
     """ piecewise tanh clamp
     Args
         x           tensor

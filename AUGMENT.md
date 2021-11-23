@@ -1,25 +1,35 @@
 # Data Transforms
 
+All transforms are typed with a class attribute `__type__`, and inherit from class `transforms_base.Transform`, a thin wrapper over `object` handling `__repr__` and kwarg updates on call.
+
+Most transforms (except of `__type__` `IO` and `Compose`) can be used with cuda devices and within differentable operations. Transform values can be randomized with most of the continuous distributions from `torch.distributions`, where defined with classes `Values` and `Probs`. See Randomization form more info.
+
+Trasformation types are: `IO`, `Compose`, `Sizing`, `Appearance`, `Affine`.
+
+Transform classes call similarly named functionals which handle different elements in the data passed generically wrapped with function `functional_base.transform()`. The purpose of `transform()` is clone or profile the data if requested.
+
 ## IO Transforms
 **`__type__ = 'IO'`**
 
 Not strictly 'augmentations' they have similar rules.
 
 ### Open()
-Opens images into tensor `Item`
+Opens images into tensor `Item`. TODO: videos, audio, pointclouds
 ### Show()
 General utility to show images. Can be called on `Item()`, `(Item(),...)`, `tensor`, `(tensor, ...)`. Plots 2d annotations.
 ## Composition Transforms
 **`__type__ = 'Compose'`**
 ### Compose
 Similar to torchvision.Compose with Bernoulli probability per transform, and max transforms
-### TwoCrop
+<!-- ### TwoCrop
 ### MultiCrop
 ### Fork
-### Laplacian
+### Laplacian 
+not translated yet
+-->
 
 ## Randomization of transform parameters
-All transforms, other than 'IO' and 'Compose' can be randomized. Randomization is performed by two classes, **`Values()`** and **`Probs()`** deriving from **`torch.distrbutions`** managing distribution properties.
+All transforms, other than 'IO' and 'Compose' can be randomized. Randomization is performed by two classes, **`Values()`** and **`Probs()`** deriving from **`torch.distrbutions`** managing distribution properties. Randomization of values can occur along any dimension for `Appearance` and `Affine`; on `Sizing` transforms randomization is restricted to batch and channel dimensions.
 
 `Values()`, a managed wrapper to a subset of `torch.distributions`  defaulting to `Uniform()`. Any transform parameter defined leveraging this class can be constant or probabilisict, affect batch, sample, or single pixels. i.e. Any value parameter can be enything fom single float to an image, constant or probabilisitc.<br> 
 
@@ -72,8 +82,13 @@ Show()(Sat(img))
 ### **Gamma()**
 Apply gamma `img^(from_gamma/target_gamma)`. One probabilistic argument, target gamma `'a'`, one constant, `from_gamma=2.2 `. 
 
+## Sizing Transforms
+### **SqueezeCrop()**
+Resize transform leveraging nn.interpolate. Dimensions can be expanded per batch or channel. WIP
+
+<div align="center">
+  <img width="100%" src= '.github/SqueezeCrop_perchannel.png'>
+</div>
 
 ## Affine Transforms
 
-
-## Compose Transforms

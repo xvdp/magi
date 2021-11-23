@@ -187,6 +187,9 @@ def center_offset_angle__path(x: torch.Tensor) -> torch.Tensor:
     x = pos_pos__path(center_offset__pos_pos(center_offset_angle__center_offset(x)))
 
     # TODO compute rotations. T(R(T-1(x)))
+
+
+
 # pylint: disable=no-member
 # pylint: disable=not-callable
 
@@ -454,17 +457,17 @@ def center_offset_angle__path(x: torch.Tensor) -> torch.Tensor:
 
 #         return [data[0], target, data[2]]
 
-def inspect_data_sample(data):
-    if isinstance(data, torch.Tensor):
-        return 0
-    if isinstance(data, (tuple, list)):
-        return inspect_data_sample(data[0]) + 1
-    return None
+# def inspect_data_sample(data):
+#     if isinstance(data, torch.Tensor):
+#         return 0
+#     if isinstance(data, (tuple, list)):
+#         return inspect_data_sample(data[0]) + 1
+#     return None
 
-def _copy_tensor_options(src, dst):
-    dst.to(dtype=src.dtype)
-    dst.to(device=src.device)
-    dst.requires_grad = src.requires_grad
+# def _copy_tensor_options(src, dst):
+#     dst.to(dtype=src.dtype)
+#     dst.to(device=src.device)
+#     dst.requires_grad = src.requires_grad
 
 # def order_tensor(data, from_order, to_order):
 #     """
@@ -710,71 +713,71 @@ def _copy_tensor_options(src, dst):
 #     """
 #     return yx_hw__yx_yx(yxhwa__yx_hw(data))
 
-def yxhwa__path(data):
-    """ center(y,x) half(h,w), angle to path
-    out tensor (..., 5)
-    in tensor  (..., 8)
-    """
-    _dt = data.dtype
-    _dv = data.device
-    _gr = data.requires_grad
-    _mirror = torch.tensor([[1],[-1.]], dtype=_dt, device=_dv, requires_grad=_gr)
-    # angles ? angle = data[:,4]
-    # > get rotations - per item rotation - tbd
-    # shear
-    _angle = data[0, 4].item()
-    _mat = get_rotation(_angle, _dt, _dv, _gr).unsqueeze(0)
+# def yxhwa__path(data):
+#     """ center(y,x) half(h,w), angle to path
+#     out tensor (..., 5)
+#     in tensor  (..., 8)
+#     """
+#     _dt = data.dtype
+#     _dv = data.device
+#     _gr = data.requires_grad
+#     _mirror = torch.tensor([[1],[-1.]], dtype=_dt, device=_dv, requires_grad=_gr)
+#     # angles ? angle = data[:,4]
+#     # > get rotations - per item rotation - tbd
+#     # shear
+#     _angle = data[0, 4].item()
+#     _mat = get_rotation(_angle, _dt, _dv, _gr).unsqueeze(0)
 
-    _c = data[..., :2].t()
-    _a = torch.bmm(_mat, data[:, 2:4].t().unsqueeze(0)).squeeze(0)
-    _b = torch.bmm(_mat, (data[:, 2:4].t()* _mirror).unsqueeze(0)).squeeze(0)
-    out = torch.cat(((_c-_a), (_c-_b), (_c+_a), (_c+_b))).t()
-    _copy_tensor_options(data, out)
-    return out
+#     _c = data[..., :2].t()
+#     _a = torch.bmm(_mat, data[:, 2:4].t().unsqueeze(0)).squeeze(0)
+#     _b = torch.bmm(_mat, (data[:, 2:4].t()* _mirror).unsqueeze(0)).squeeze(0)
+#     out = torch.cat(((_c-_a), (_c-_b), (_c+_a), (_c+_b))).t()
+#     _copy_tensor_options(data, out)
+#     return out
 
-def yxhwa__splitpath(data):
-    """ center(y,x) half(h,w), angle to spit path
-    out tensor (..., 5)
-    in tensor  (..., 4, 2)
-    """
-    return yxhwa__path(data).reshape(-1, 4, 2)
+# def yxhwa__splitpath(data):
+#     """ center(y,x) half(h,w), angle to spit path
+#     out tensor (..., 5)
+#     in tensor  (..., 4, 2)
+#     """
+#     return yxhwa__path(data).reshape(-1, 4, 2)
 
-def shift_target(target, offset, mode=None, sign=1):
-    """New Tensor, Added or Subtracted from Target Tensor
-    """
-    return shift_target_(target.clone().detach(), offset, mode, sign)
+# def shift_target(target, offset, mode=None, sign=1):
+#     """New Tensor, Added or Subtracted from Target Tensor
+#     """
+#     return shift_target_(target.clone().detach(), offset, mode, sign)
 
-def shift_target_(target, offset, mode=None, sign=1):
-    """adds or subtracts from target tensor
-        in place
-    """
-    if mode is None:
-        mode = config.BOXMODE
-    elif isinstance(mode, str):
-        mode = config.BoxMode(mode)
-    assert mode in config.BoxMode, "mode has to be enum of Boxmode type, not '%s'"%type(mode)
+# def shift_target_(target, offset, mode=None, sign=1):
+#     """adds or subtracts from target tensor
+#         in place
+#     """
+#     if mode is None:
+#         mode = config.BOXMODE
+#     elif isinstance(mode, str):
+#         mode = config.BoxMode(mode)
+#     assert mode in config.BoxMode, "mode has to be enum of Boxmode type, not '%s'"%type(mode)
 
-    if isinstance(offset, (int, float)):
-        offset = (offset, offset)
+#     if isinstance(offset, (int, float)):
+#         offset = (offset, offset)
 
-    if isinstance(offset, (tuple, list)):
-        offset = torch.tensor(offset, device=target.device, dtype=target.dtype)
+#     if isinstance(offset, (tuple, list)):
+#         offset = torch.tensor(offset, device=target.device, dtype=target.dtype)
 
-    offset = offset * sign
+#     offset = offset * sign
 
-    if mode._name_[0] == "x":
-        offset = offset.flip(0)
+#     if mode._name_[0] == "x":
+#         offset = offset.flip(0)
 
-    if mode in (config.BoxMode.xywh, config.BoxMode.yxhw):
-        target[:, 0].add_(offset)
+#     if mode in (config.BoxMode.xywh, config.BoxMode.yxhw):
+#         target[:, 0].add_(offset)
 
-    if mode in (config.BoxMode.yxyx, config.BoxMode.yxyx, config.BoxMode.ypath, config.BoxMode.xpath):
-        target[:, :].add_(offset)
+#     if mode in (config.BoxMode.yxyx, config.BoxMode.yxyx, config.BoxMode.ypath, config.BoxMode.xpath):
+#         target[:, :].add_(offset)
 
-    if mode in (config.BoxMode.yxhwa, config.BoxMode.xywha):
-        target[:, :2].add_(offset)
+#     if mode in (config.BoxMode.yxhwa, config.BoxMode.xywha):
+#         target[:, :2].add_(offset)
 
-    return target
+#     return target
 
 
 def get_rotation(angle, dtype, device, grad):

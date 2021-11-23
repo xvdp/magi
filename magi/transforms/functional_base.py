@@ -16,19 +16,19 @@ from ..features import Item
 from ..utils import get_broadcastable
 from .transforms_rnd import Distribution, Probs
 
-_tensoritem = (torch.Tensor, Item)
-_torchable = (int, float, list, tuple, np.ndarray, torch.Tensor, Distribution)
-_vector = (np.ndarray, torch.Tensor)
+tensorish = (int, float, list, tuple, np.ndarray, torch.Tensor, Distribution)
+Tensorish = Union[tensorish]
+TensorItem = Union[torch.Tensor, Item]
 
 #pylint: disable=no-member
 
 ###
 # functional generic transform
 #
-def transform(data: Union[_tensoritem],
+def transform(data: TensorItem,
               func: Callable,
               kind_keys: Optional[list] = None,
-              for_display: bool = False, **kwargs) -> Union[_tensoritem]:
+              for_display: bool = False, **kwargs) -> TensorItem:
     """ Apply generic functional transform
     Args
         data        Item or tensor
@@ -61,10 +61,10 @@ def transform(data: Union[_tensoritem],
     return data
 
 @memory_profiler
-def transform_profile(data: Union[_tensoritem],
+def transform_profile(data: TensorItem,
                       func: Callable,
                       kind_keys: Optional[list] = None,
-                      for_display: bool = False, **kwargs) -> Union[_tensoritem]:
+                      for_display: bool = False, **kwargs) -> TensorItem:
     """ nvml, torch.cuda.stats, torch.profiler digest on transform """
 
     kw = {}
@@ -79,7 +79,7 @@ def transform_profile(data: Union[_tensoritem],
 
     return transform(data=data, func=func, kind_keys=kind_keys, for_display=for_display, **kwargs)
 
-def get_bernoulli_like(x: Union[_torchable], like: Union[torch.Tensor, Item]) -> torch.Tensor:
+def get_bernoulli_like(x: Tensorish, like: TensorItem) -> torch.Tensor:
 
     _reinit = isinstance(x, float) and x > 0 and x < 1
     _reinit |= torch.is_tensor(x) and not torch.all(x[x!=1] == 0)
@@ -90,7 +90,7 @@ def get_bernoulli_like(x: Union[_torchable], like: Union[torch.Tensor, Item]) ->
     return get_sample_like(x, like=like)
 
 
-def get_sample_like(x: Union[_torchable], like: Union[torch.Tensor, Item]) -> torch.Tensor:
+def get_sample_like(x: Tensorish, like: TensorItem) -> torch.Tensor:
     """ sample from Value, Probs
     if x is tensor of correct dtype and device, acts as a pass thru
     Args
@@ -123,8 +123,7 @@ def get_sample_like(x: Union[_torchable], like: Union[torch.Tensor, Item]) -> to
 
     raise NotImplementedError(f"Expected, tensor or distribution sampler, got {type(x)}")
 
-
-def get_dtype_device_update(x: Union[torch.Tensor, type], like: torch.Tensor) -> dict:
+def get_dtype_device_update(x: Union[torch.Tensor, Distribution], like: torch.Tensor) -> dict:
     out = {}
     if like.dtype != x.dtype:
         out["dtype"] = like.dtype

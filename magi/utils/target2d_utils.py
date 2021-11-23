@@ -1,15 +1,87 @@
 """@xvdp
 bounding boxes and paths annotation conversions
 """
+from typing import Union, Optional
 import torch
+from .. import config
 # pylint: disable=no-member
 
+###
+#
+# 2d annotation targets affine transforms
+#
+def target_mode_str( mode: Union[str, config.BoxMode]):
+    mode = mode if isinstance(mode, str) else mode.name
+    assert mode in config.BoxMode.__members__, f"mode {mode} not defined in BoxMode {config.BoxMode.__members__}"
+    return mode
 
-__all__ = ['ij_ji', 'pos_offset__pos_pos', 'path__pos_pos',
-           'pos_pos__pos_offset', 'pos_pos__path', 'pos_pos__center_offset',
-           'center_offset__pos_pos', 'center_offset__center_offset_angle', 'center_offset_angle__center_offset']
+def translate_target(target: Union[torch.Tensor, list, tuple],
+                     translation: torch.Tensor,
+                     mode: Union[str, config.BoxMode] = "xywh",
+                     sign: int = 1) -> Union[list, torch.Tensor]:
+    """adds or subtracts from target
+    """
+    _valid = (list, tuple, torch.Tensor)
+    assert isinstance(target, _valid), f"expected types {_valid}, got {type(target)}"
+    mode = target_mode_str(mode)
 
-# TODO complete and validate center_offset_angle__path
+    if isinstance(target, (list, tuple)):
+        mode = mode if isinstance(mode, (list, tuple)) else [mode]*len(target)
+        out  = []
+        for i, tgt in enumerate(target):
+            out.append(translate_target(tgt, translation, mode[i], sign))
+        return out
+
+    # it would make more sense to convert to yxyx and apply all
+    if mode[0] == 'x':
+        translation = translation.flip(-1)
+    translation = translation.mul(sign)
+    if mode in ('xywh', 'yxhw'):
+        translation = torch.stack((translation, torch.zeros(2)))
+    elif mode in ('xywha', 'yxhwa'):
+        translation = torch.cat((translation, torch.zeros(3)))
+
+    return target.add(translation)
+
+def affine_target(target: Union[torch.Tensor, list, tuple],
+                  matrix: torch.Tensor,
+                  mode: Union[str, config.BoxMode] = "xywh"):
+
+    return target
+###
+#
+# transformations
+#
+def to_homogeneous(x: torch.Tensor):
+    """ expands last dimension with 1s"""
+    return torch.cat((x, torch.ones((*x.shape[:-1], 1))), -1)
+
+# class Matrix2d:
+#     def __init__(self,
+#                  n: int = 1,                        # batch size
+#                  t: torch.Tensor = torch.zeros(2),
+#                  r: Union[None, float, list, tuple, torch.Tensor] = None,
+#                  s: Optional[torch.Tensor] = None) -> None:
+#         """ r 
+        
+#         """
+#         self.__ = torch.broadcast_to(torch.eye(3).unsqueeze(0), (n, 3, 3))
+#         if t is not None:
+#             assert t.ndim in (1,2) and t.shape[-1] == 2, f"expected tensor shaped (2), (1,2) or ({n},2) got {t.shape} "
+#             t = t if t.ndim == 2 else t.unsqueeze(0)
+#             if t.ndim == 1:
+#                 t = t.unsqueeze(0)
+#             for i in range(n):
+#                 self.__[i, :-1, -1] = t[min(t.len -1, i)]
+#         if r is not None:
+#             if isinstance(r, (int)) or (torch.is_tensor(r) and r.ndim < n) or isinstance(r, (list, tuple)) and len(r) < n:
+
+#     @staticmethod
+#     def make_rotation(val):
+#         cos = torch.cos(torch.as_tensor(val))
+#         sin = torch.sin(torch.as_tensor(val))
+#         return torch.tensor([[cos, -1*sin, 0.], [sin, cos, 0.], [0., 0., 0.]])
+
 
 #
 # Position 2d Targets

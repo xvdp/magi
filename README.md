@@ -1,6 +1,9 @@
 # Magi
 *Magister Lt. teacher*
 
+## WIP - currently in translation from private repos
+
+
 A collection of augmentation, training and dataloader wrappers for `pytorch`. This set of tools was built to address the fact that world data is multimodal, one may want to pass images alongside with annotations, sounds or graphs into a learner, or a collection of data may require to share parameters across multiple models, or a model may require benchmarking across augmentation ranges, or augmentation could require exploration of different probability distributions.
 
 
@@ -83,13 +86,11 @@ For instance, getting an item from WIDER dataset
 ``` -->
 
 
-### datasets abd dataloading
+## 2. datasets abd dataloading
 Dataloader can pass transforms as dictionaries, for serialization.
-
+Not ported yet.
 ### training
 tbd
-
-
 
 
 WIP

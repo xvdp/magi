@@ -1,19 +1,5 @@
 """@xvdp
 Appearance Transforms dont change size or positions of data
-
-TODO: p and distribution to Normalize: mean, std
-
-Distribution transform: - for [mean, std]
--> value, p
-->  distribution type:
-    uniform: [value, other]
-    normal: [value, sigma[3], clamp values eg,[0.1, None]
-        eg std: normal [s3 - std - s3+] > 0.01
-
-
-uniform[mean_0 - mean_1]
-
-
 """
 from typing import Union, Optional
 
@@ -27,7 +13,7 @@ from .. import config
 _tensorish = (int, float, list, tuple, np.ndarray, torch.Tensor)
 _Tensorish = Union[_tensorish]
 
-__all__ = ["Normalize", "MeanCenter", "UnMeanCenter", "UnNormalize", "NormToRange", "Saturate"]
+__all__ = ["Normalize", "MeanCenter", "UnMeanCenter", "UnNormalize", "NormToRange", "Saturate", "Gamma", "SoftClamp"]
 
 # pylint: disable=no-member
 def _as_tensor(values: _Tensorish, ndims: int = 4, axis: int = 1) -> torch.Tensor:

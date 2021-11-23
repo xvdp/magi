@@ -79,6 +79,43 @@ def warn_grad_cloning(for_display: bool, grad: bool, in_config: bool=True, verbo
     return for_display
 
 
+def slicer(shape: tuple,
+           dims: Union[torch.Tensor, tuple, list],
+           vals: Union[torch.Tensor, tuple, list]) -> tuple:
+    """ simple slice builder returning value:value+1
+    on dimensions
+    Args
+        shape   tuple, tensor or initial dimensions of tensor
+        dims    tuple, dims over which values act
+        vals    tuple len(values) == len(dimensions), 0 <= values[i] < shape[i]
+    Example
+        # given x: tensor of shape (4,3,20,20)
+        >>> _slice = slicer((4,3,20), dims=(0,2), vals=(2,5))
+        >>> _slice # -> (2:3, :, 5:6)
+        >>> x[_slice].shape
+        torch.Size([1, 3, 1, 20])
+    """
+    assert len(dims) == len(vals), f" {len(dims)} dims == {len(vals)} vals"
+    assert max(dims) < len(shape), f"cannot slice dim {max(dims)} over shape {shape}"
+    _len = min(max(dims) + 1, len(shape))
+    fro = [0] * _len
+    _to = list(shape)[:_len]
+    for i, dim in enumerate(dims):
+        fro[dim] = vals[i]
+        _to[dim] = vals[i] + 1
+    return tuple(slice(i, j) for (i, j) in zip(fro, _to))
+
+def squeeze(x: torch.Tensor, side: int = 0, min_ndim: int = 1) -> torch.Tensor:
+    """ recursive squeeze till no more squeezing is possible
+    Args
+        x           tensor
+        side        int [0] | -1, left or right
+        min_ndim    int [1] | 0, return min ndim
+    """
+    while x.shape[side] == 1 and x.ndim > min_ndim:
+        x = x.squeeze(side)
+    return x
+
 def check_contiguous(x: torch.Tensor, verbose: bool = False, msg: str = "") -> torch.Tensor:
     """ Check if thensor is contiguous, if not, force it
         permutations result in non contiguous tensors which lead to cache misses

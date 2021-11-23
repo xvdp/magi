@@ -1,4 +1,11 @@
-"""@xvdp """
+"""@xvdp 
+Ramdom Distribution Classes - Managed Wrapper over torch.distributions
+
+Distribution() - 
+
+Values(Distribution) - Managing values
+Probs(Values)   Managing bernoulli probabilities
+"""
 from typing import Union, Optional
 import inspect
 from inspect import getfullargspec, signature
@@ -343,7 +350,7 @@ class Values(Distribution):
 
         if self.__ is None:
             out = self.vals
-            # print("const shape, input shape -> sample_shape", out.shape, shape, sample_shape)
+            print("const shape, input shape -> sample_shape", out.shape, shape, sample_shape)
             out =  torch.broadcast_to(out, sample_shape.tolist())
             # out = torch.stack([self.a for _ in range(sample_shape[0])])# constant
         elif self.__.__class__.__name__ in ('Categorical', 'Binomial'):
