@@ -10,6 +10,7 @@ from magi.config import load_dataset_path
 
 # pylint: disable=no-member
 WIDER_ROOT = load_dataset_path("WIDER")
+torch.set_default_dtype(torch.float32) # reset float16 if set by previous test
 
 def wider(**kwargs):
     return WIDER(data_root=WIDER_ROOT, **kwargs)

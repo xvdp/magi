@@ -60,7 +60,8 @@ def _rnd_opt(key: str, choices: Union[list, tuple], no_option_option: bool=True)
 # Tests for Open(), should pass or warn, but not fail
 
 # pylint: disable=no-member
-# 1. Test Default as torch
+torch.set_default_dtype(torch.float32) # reset float16 if set by previous test
+
 def test_open_as_torch_with_defaults_all_files():
     """ commmon case, declare Open as mt.Open()
             pass filename: all files
@@ -173,19 +174,20 @@ def test_dtypes_torch():
     assert_torch(img, opts, fileinfo, "mt.Open", defaults)
 
     fileinfo = _get_file()
-    opts = ObjDict({'dtype': "float16", 'out_type': 'torch', 'device':'cpu'})
-    O = mt.Open(**opts)
-    img = O(fileinfo.name)
-    defaults = ObjDict(O.__dict__)
-    assert_torch(img, opts, fileinfo, "mt.Open", defaults)
-
-    fileinfo = _get_file()
     opts = ObjDict({'dtype': "float64", 'out_type': 'torch', 'device':'cpu'})
     O = mt.Open(**opts)
     img = O(fileinfo.name)
     defaults = ObjDict(O.__dict__)
     assert_torch(img, opts, fileinfo, "mt.Open", defaults)
 
+@pytest.mark.skipif(torch.__version__ < "1.9", reason="half types on cpu implemented in 1.9")
+def test_halftypes_torch():
+    fileinfo = _get_file()
+    opts = ObjDict({'dtype': "float16", 'out_type': 'torch', 'device':'cpu'})
+    O = mt.Open(**opts)
+    img = O(fileinfo.name)
+    defaults = ObjDict(O.__dict__)
+    assert_torch(img, opts, fileinfo, "mt.Open", defaults)
 
 def test_dtypes_numpy():
 

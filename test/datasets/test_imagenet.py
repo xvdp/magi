@@ -10,6 +10,7 @@ from magi.features import Item
 
 # pylint: disable=no-member
 IMAGENET_ROOT = config.load_dataset_path("ImageNet")
+torch.set_default_dtype(torch.float32) # reset float16 if set by previous test
 
 
 @pytest.mark.skipif(IMAGENET_ROOT is None, reason=f"Could not find Wider Folder, adjust IMAGENET_ROOT in {__file__} to test")

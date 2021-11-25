@@ -1,11 +1,13 @@
 # Magi
 *Magister Lt. teacher*
 
+current STATUS: broken
 A collection of augmentation, training and dataloader wrappers for `pytorch`. 
 
 ## WIP - currently in translation from private repos
 For the moment mostly but not guaranteed to be back compatible.
 I'm translating an augmentation from untested private repos so as to publish some observations on bias in learning, tbd., and to make sure that I can stop rewriting the same code, generalizing at the same time. Should have comparable transforms to most augmentation pipleines shortly.
+
 
 This set of tools was built to address the fact that world data is multimodal, one may want to pass images alongside with annotations, sounds or graphs into a learner, or a collection of data may require to share parameters across multiple models, or a model may require benchmarking across augmentation ranges, or augmentation could require exploration of different probability distributions. Passing data as list is generic but incomplete, requiring ad hoc transforms per model or dataset. Passing features as structs or dicts --as in tensorflow datasets-- allows for specificity but precludes the possibility of mixing datasets. To solve both specificity and possibility of expansion of the data items, this project defines an `Item()` feature class inheriting from list, with typed elements. 
 

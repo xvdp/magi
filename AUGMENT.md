@@ -78,6 +78,11 @@ Show()(Sat(img))
 <div align="center">
   <img width="100%" src=".github/Saturate_Categorical_abcd.png">
 </div>
+Random Saturate with Gumbel distribution and different expand dims: (0,1,3), (0,1,2,3), None, (1,) 
+<div align="center">
+  <img width="100%" src=".github/Saturate_height_pixel.png">
+</div>
+
 
 ### **Gamma()**
 Apply gamma `img^(from_gamma/target_gamma)`. One probabilistic argument, target gamma `'a'`, one constant, `from_gamma=2.2 `. 

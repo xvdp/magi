@@ -6,6 +6,8 @@ from magi.utils import get_broadcastable, broadcast_tensors, slicer
 
 
 # pylint: disable=no-member
+torch.set_default_dtype(torch.float32) # reset float16 if set by previous test
+
 def test_broadcast_tensors():
     a = -0.1556
     b = [[ 0.1201], [-0.7997]]

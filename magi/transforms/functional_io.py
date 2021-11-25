@@ -68,6 +68,11 @@ def open_file(file_name: Union[str, list, tuple],
 #
 # functional for Show()
 #
+# TODO complete port of annotations
+# showim(images, targets, labels, show_targets=show_targets, annot=annot, width=width,
+#                height=height, path=path, as_box=as_box, unfold_channels=unfold_channels, **kwargs)
+# TODO show, ncols, from list / tensor. verify both work
+#
 def show(data: Union[list, tuple, torch.Tensor, np.ndarray],
          ncols: Optional[int] = None,
          pad: int = 0,
@@ -88,8 +93,8 @@ def show(data: Union[list, tuple, torch.Tensor, np.ndarray],
 
     if isinstance(data, (torch.Tensor, np.ndarray)):
         targets = None if 'targets' not in kwargs or not show_targets else kwargs.pop('targets')
-        show_tensor(data, targets, target_mode, save=save, figsize=figsize, unfold_channels=unfold_channels,
-                    ncols=ncols, pad=pad, **kwargs)
+        show_tensor(data, targets, target_mode, save=save, figsize=figsize,
+                    unfold_channels=unfold_channels, ncols=ncols, pad=pad, **kwargs)
 
     elif isinstance(data, (list, tuple)):
         if isinstance(data, Item):
@@ -146,8 +151,6 @@ def item_to_tensor_targets(data: Item, default: str = 'xyhw', show_targets: bool
         targets, formats = get_2d_targets(data, default)
     return tensors, targets, formats
 
-
-
 def get_2d_targets(data: Item, default: str = 'xyhw') -> tuple:
     """ returns tuple of lists, [target tensor], [format str]
     """
@@ -155,117 +158,3 @@ def get_2d_targets(data: Item, default: str = 'xyhw') -> tuple:
     formats = [data.form[i] for i in idxs] if 'form' in data.keys else [default]*idxs
     return [[data[i] for i in idxs]], [formats]
 
-"""
-
-show_tensor(x: Union[np.ndarray, torch.Tensor],
-                targets: Union[None, np.ndarray, torch.Tensor],
-                target_mode: str = 'xywh',
-                figsize: Optional[tuple] = (10,10),
-                subplot: Optional[tuple] = None,
-                show: bool = True,
-                save: Optional[str] = None,
-                unfold_channels: bool = False,
-                **kwargs): ncols, pad background
-
-    data could be 
-    tensor
-    ndarray
-    Item
-    list of tensors. ndarray, items
-
-
-      if isinstance(data, np.ndarray):
-            _div = 1.0 if data.dtype != np.uint8 else 255.
-            data = torch.from_numpy(data).to(dtype=torch.float32).div_(_div)
-
-        elif isinstance(data[0], np.ndarray):
-            _div = 1.0 if data[0].dtype != np.uint8 else 255.
-            data[0] = torch.from_numpy(data[0]).to(dtype=torch.float32).div_(_div)
-
-
-"""
-
-
-# def show(data: Union[list, tuple, torch.Tensor, np.ndarray],
-#          ncols: Optional[int] = None,
-#          pad: int = 1,
-#          show_targets: bool = True,
-#          annot, width, height:
-#          save: Optional[str] = None, as_box,
-#          max_imgs: Optional[int] = None,
-#          unfold_channels: bool = True,
-#          **kwargs) -> None:
-#     """ functional for transforms.Show()
-#         Args
-#             data    (ndarray img, list)   # image can be 4,3 or 2d
-#                     ([ndarray img, [ndarray annot], ndarray tgts])
-#                     (tensor img)
-
-#                     ([tensor img, tensor_list annot, tensor tgts])           < one image with annotations
-#                     ([tensor, ..., tensor] imgs)                             < list of images without anotations
-#                     ([[tensor img, tensor_list annotd, tensor tgts], ...,[img anns, tgts]]
-#     """
-#     pass
-#     # if "mode" in kwargs:
-#     #     config.set_boxmode(kwargs["mode"])
-
-#     allow_dims = [1, 3, 4]
-#     # mode = config.BOXMODE if "mode" not in kwargs else kwargs["mode"]
-
-#     if isinstance(data, np.ndarray):
-#         showim(data, targets=None, labels=None, show_targets=show_targets, annot=annot, width=width,
-#                height=height, path=path, as_box=as_box, **kwargs)
-#         return
-
-#     if isinstance(data[0], np.ndarray):
-#         targets = None if len(data) == 1 else data[1]
-#         labels = None if len(data) < 3 else data[2]
-#         showim(data[0], targets=targets, labels=labels, show_targets=show_targets, annot=annot,
-#                width=width, height=height, path=path, as_box=as_box, **kwargs)
-#         return
-
-#     # if "bbox" in kwargs and isinstance(data, (list, tuple)) and len(data) > 1:
-#     #     if data[1] is not None and len(data[1]) > 0:
-#     #         box = targets_bbox(data[1])
-#     #         data = addbbox(data, box)
-
-#     # list containing single batch of tensors
-#     if isinstance(data, (tuple, list)) and len(data)==1:
-#         data = data[0]
-    
-#     # list of single image tensors 1,C,H,W or C,W,H
-#     if is_tensor_image_list(data):
-
-#         images = []
-#         if ncols is None:
-#             ncols = min(len(data), 8)
-#         images = []
-#         for _data in data:
-#             image, targets, labels = to_numpy(_data, ncols, pad=pad, allow_dims=allow_dims,
-#                                               mode=mode)
-#             images.append(image)
-
-#         showims(images, targets=None, labels=None, show_targets=show_targets, annot=annot,
-#                 width=width, height=height, path=path, as_box=as_box,
-#                 unfold_channels=unfold_channels, ncols=ncols, **kwargs)
-
-#     # if list of lists containing equal image tensors
-#     elif is_tensor_batch(data):
-#         if ncols is None:
-#             ncols = min(len(data[0]), 8)
-#         images, targets, labels = data_to_numpy(data=data, pad=pad, max_imgs=max_imgs, ncols=ncols,
-#                                                 width=width, inplace=False, **kwargs)
-
-#         showim(images, targets, labels, show_targets=show_targets, annot=annot, width=width,
-#                height=height, path=path, as_box=as_box, unfold_channels=unfold_channels,
-#                ncols=ncols, **kwargs)
-
-#     elif torch.is_tensor(data) and data.dtype in (torch.float32, torch.uint8):
-
-#         if ncols is None:
-#             ncols = min(len(data), 8)
-#         images, targets, labels = data_to_numpy(data=data, pad=pad, max_imgs=max_imgs, ncols=ncols,
-#                                                 width=width, inplace=False, **kwargs)
-
-#         showim(images, targets, labels, show_targets=show_targets, annot=annot, width=width,
-#                height=height, path=path, as_box=as_box, unfold_channels=unfold_channels, **kwargs)

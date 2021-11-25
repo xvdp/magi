@@ -8,42 +8,49 @@ from magi import config
 
 # pylint: disable=no-member
 IMAGENET_ROOT = config.load_dataset_path("ImageNet")
-WIDER_ROOT = config.load_dataset_path("ImageNet")
+WIDER_ROOT = config.load_dataset_path("WIDER")
+torch.set_default_dtype(torch.float32) # reset float16 if set by previous test
 
-# def get_dset_item(dset=None):
-#     dsets = [ImageNet, WIDER, Noise]
+
+def get_dataset(name="ImageNet", **kwargs):
+    if name == "ImageNet":
+        if IMAGENET_ROOT is not None:
+            return ImageNet(mode='val', **kwargs)
+    if name == "WIDER":
+        if WIDER_ROOT is not None:
+            return WIDER(mode='val', **kwargs)
+    return Noise(**kwargs)
+
 
 def test_normalize():
 
     N = Normalize()
-    if IMAGENET_ROOT is not None:
-        dset = ImageNet(mode='val')
-    else:
-        dset = Noise()
+    dset = get_dataset('ImageNet', for_display=True)
 
     item = dset.__getitem__()
     mean = item[0].mean().item()
     std = item[0].std().item()
 
-    N(item)
+    item2 = N(item)
 
-    nmean = item[0].mean().item()
-    nstd = item[0].std().item()
+    nmean = item2[0].mean().item()
+    nstd = item2[0].std().item()
 
     assert nmean != mean
     assert nstd != std
 
 def test_norm_grad():
-    # check default options, config.FOR_DISPLAY is False
+
+    config.set_for_display(True)
+    # without specifically setting it, should not change the config global
+
     N = Normalize()
     assert N.for_display is None
-    assert config.FOR_DISPLAY == False
+    assert config.FOR_DISPLAY == True
     
-    # check that setting grad, overrids config.FOR_DISPLAY
-    if IMAGENET_ROOT is not None:
-        dset = ImageNet(mode='val', grad=True, for_display=True)
-    else:
-        dset = Noise(grad=True, for_display=True)
+    # check that setting grad, overrides config.FOR_DISPLAY
+    dset = get_dataset('ImageNet', grad=True)
+    
     assert not config.FOR_DISPLAY, "grad shouldve overriten for display, didnt"
     d = dset.__getitem__()
     print(type(d[0]))
@@ -52,11 +59,12 @@ def test_norm_grad():
     x = N(d)
     assert torch.all(torch.eq(d[0], x[0])).item(), f"norm w grad should clobber input"
 
+
 def test_not_for_display():
     """
     """
     N = Normalize()
-    dset = ImageNet(mode='val', for_display=False)
+    dset = get_dataset('ImageNet', for_display=False)
     assert not config.FOR_DISPLAY, f"dataset should change for display"
     d = dset.__getitem__()
     x = N(d)
@@ -64,7 +72,7 @@ def test_not_for_display():
 
 def test_for_display_local():
     # check that passing 'for_display' on calls without gradient overrides for display but does not set Config
-    dset = ImageNet(mode='val', for_display=False)
+    dset = get_dataset('ImageNet', for_display=False)
     N = Normalize(for_display=True)
     assert not config.FOR_DISPLAY, f"transform should NOT change FOR_DISPLAY"
     assert N.for_display, f"transform should pass its own for_display"
@@ -73,7 +81,7 @@ def test_for_display_local():
     assert not torch.all(torch.eq(d[0], x[0])).item(), f"norm for display should NOT clobber input"
 
 def test_block_clone_grad():
-    dset = ImageNet(mode='val', for_display=True)
+    dset =     dset = get_dataset('ImageNet', for_display=True)
     assert config.FOR_DISPLAY, f"FOR_DISPLAY should be False, globally"
     N = Normalize()
     d = dset.__getitem__()

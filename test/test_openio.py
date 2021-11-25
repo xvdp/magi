@@ -11,6 +11,7 @@ from _test_common import assert_msg, source_url
 
 
 # pylint: disable=no-member
+torch.set_default_dtype(torch.float32) # reset float16 if set by previous test
 
 
 # open_url()

@@ -314,8 +314,9 @@ def torch_fix_channels(x: torch.Tensor, channels: int, dim: int = 1) -> torch.Te
         out = torch.cat([x]+[torch.unbind(x, dim)[0].unsqueeze(dim)]*(channels-_ch), dim=dim)
     return out
 
-def np_fix_channels(img: np.ndarray, channels: int, fillvalue: Union[None, int,float] = None
-) -> np.ndarray:
+def np_fix_channels(img: np.ndarray,
+                    channels: int,
+                    fillvalue: Union[None, int,float] = None) -> np.ndarray:
     """
     validate image has spec'd channels, clip channels or add channels
     all arrays returned as a shape length 3 array

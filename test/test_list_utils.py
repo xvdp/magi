@@ -51,6 +51,9 @@ def test_list_intersect():
     out = list_intersect(a,b,c)
     assert out == [3]
 
+# pylint: disable=no-member
+torch.set_default_dtype(torch.float32) # reset float16 if set by previous test
+
 def test_list_flatten():
 
     np_rg = np.arange(45,48,1, dtype="int")

@@ -259,6 +259,7 @@ def saturate_tensor(x: torch.Tensor, sat: torch.Tensor, p: torch.Tensor) -> torc
     if p_all(p):
         return to_saturation(x, sat)
 
+    print(x.shape, sat.shape, p.shape)
     return torch.lerp(x, to_saturation(x, sat), p)
 
     # # TODO profile if lerp, loop or multiprocess

@@ -11,9 +11,8 @@ import torch
 from koreto import Col
 # from .np_util import np_validate_dtype#, to_xywh
 from .imageio import increment_name
+from .target2d_utils import ij__ji, target_mode_str
 from .. import config
-
-# pylint: disable = no-member
 
 # pylint: disable = no-member
 def show_tensor(x: Union[np.ndarray, torch.Tensor],
@@ -75,7 +74,8 @@ def show_tensor(x: Union[np.ndarray, torch.Tensor],
         # print("\ndrawing targets")
         for i, target in enumerate(targets):
             # print(f" target {i}, type {type(target)}, mode {target_mode[i]}")
-            draw_boxes(target, target_mode[i], color=colors[i%len(colors)])#, annot, labels, color, lwidth)
+            draw_boxes(target, target_mode[i], color=colors[i%len(colors)])
+            # TODO add  annot, labels, color, lwidth)
 
     plt.imshow(x, cmap='gray' if 'cmap' not in kwargs else kwargs['cmap'])
 
@@ -94,7 +94,6 @@ def show_tensor(x: Union[np.ndarray, torch.Tensor],
 
 
 def showhist(data, width=10):
-    # pylint: disable=no-member
     plt.figure(figsize=(width, width/2))
     for _d in data:
         plt.plot(torch.histc(_d, bins=255).clone().detach().cpu().numpy())
@@ -114,7 +113,7 @@ def to_numpy_grid(x: torch.Tensor,
     x = x.to("cpu").clone().detach()
     n, c, h, w = x.shape
     m = n
- 
+
     # more than 3 channels
     if (c not in (1, 3) and c%3) or unfold_channels:
         x = x.view(n*c, 1, h, w)
@@ -162,6 +161,7 @@ def draw_boxes(boxes, mode, annot=None, labels=None, color='yellow', lwidth=1):
     Args
         boxes   tensor
         mode    in BoxMode
+    TODO : add annotations, labeles, color and style handlers
     """
     if isinstance(mode, str):
         mode = [mode]*len(boxes)
@@ -174,33 +174,33 @@ def draw_boxes(boxes, mode, annot=None, labels=None, color='yellow', lwidth=1):
 def _draw_box_of_mode(box: np.ndarray,
                       mode: Union[str, config.BoxMode],
                       color: str = "yellow",
-                      lwidth: float = 1.) -> np.ndarray:
-    target = None
+                      lwidth: float = 1.) -> None:
+    """ draw 2d annotations. matplotlib shapes are x dominant
+    ie. Rectangle(xy, width, height, angle=0.0, **kwargs)
+        Polygon(xy, closed=True, **kwargs)
+        Rectangle(xy, width, height, angle=0.0, **kwargs)
+    convert boxes to xyhw, paths to xpath, and ellipses to xyhwa
+    """
 
-    mode = mode if isinstance(mode, str) else mode.name
-    assert mode in config.BoxMode.__members__, f"mode {mode} not defined in BoxMode {config.BoxMode.__members__}"
+    mode = target_mode_str(mode)
 
     if (mode in ('xywha', 'yxhwa') and box.ndim > 1) or box.ndim > 2:
         for b in box:
             _draw_box_of_mode(b, mode, color, lwidth)
-
     else:
-        if mode in ('yxhw', 'yxyx'):
-            box[0] = box[0][::-1]
-            box[1] = box[1][::-1]
-            mode = mode[:2][::-1] + mode[2:][::-1]
-
-        if mode == 'xyxy':
-            box[1] -= box[0]
-            mode = 'xywh'
+        if mode[0] == 'y':
+            box = ij__ji(box)
+            mode = 'x' + mode[1:]
+            if mode[1:] in ('xhw', 'xyx'):
+                mode = 'xy' + mode[2:][::-1]
 
         if mode == 'xywh':
-            # Rectangle(xy, width, height, angle=0.0, **kwargs)
-            target = Rectangle(box[0], *box[1], edgecolor=color, linewidth=lwidth, facecolor='none')  
+            target = Rectangle(box[0], *box[1], edgecolor=color, linewidth=lwidth, facecolor='none')
+
         elif mode in ('xywha', 'yxhwa'):
             target = Ellipse(box[:2], box[2]*2, box[3]*2, angle=box[4]*-180/np.pi, edgecolor=color,
-                            linewidth=lwidth, facecolor='none')
-        elif mode in ('ypath', 'xpath'):
+                             linewidth=lwidth, facecolor='none')
+        elif mode == 'xpath':
             target = Polygon(box, closed=True, edgecolor=color, linewidth=lwidth, facecolor='none')
         else:
             raise NotImplementedError(f"Mode {mode} not recognized")

@@ -5,19 +5,10 @@ import pytest
 import torch
 from magi.features import Item, ListDict
 
-# def test_del_Item():
-#     """ should del Item not delete items it contains as well?"""
-#     tensor = torch.randn(1,3,54,54)
-#     dic = {"a":0, "b":1, "c":2}
-#     string = "inigomontoya"
-#     ls = [12,12,12]
-#     data = Item([tensor, ls, dic, 12., 0, string],
-#                     tags=["image", "list", "dict", "int", "float", "str"])
-#     del data
-#     assert tensor is None, f"did deleting data not delete tensor? {tensor.shape}"
-
 
 # pylint: disable=no-member
+torch.set_default_dtype(torch.float32) # reset float16 if set by previous test
+
 def test_listdict():
 
     _ld = ListDict([torch.randn([1,3,45,45]), 1,2,3,4 ], some_key="some_value", some_other_key=42)
@@ -170,11 +161,11 @@ def test_to_tensor_all():
 
 def test_to_tensor_dtype():
 
-    dtype = dtype=["float32", "uint8", "float64", "float16", "str", None]
-    data = Item([[[0,1],[0,2]], [1,1,4], [[[1]],[[.1]]], 12., 0, "asdf"], tags=["image", "list", "dict", "int", "float", "str"],dtype=dtype)
+    dtype =["float32", "uint8", "float64", "float32", "str", "str"]
+    data = Item([[[0,1],[0,2]], [1,1,4], [[[1]],[[.1]]], 12., 0, "asdf"], tags=["image", "positions", "something", "scale", "zero", "querty"], dtype=dtype)
     data.to_torch()
 
-    for i in [0,1,2,3]:
+    for i in [0,1,2]:
         assert data[i].dtype == torch.__dict__[dtype[i]], f"found, { data[i].dtype }"
 
 

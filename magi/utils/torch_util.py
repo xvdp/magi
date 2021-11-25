@@ -60,7 +60,7 @@ def logndarray(x, msg=""):
     print(f"{msg}{tuple(x.shape)},{_mean},{_min},{_max}")
 
 
-def warn_grad_cloning(for_display: bool, grad: bool, in_config: bool=True, verbose: bool=True) -> bool:
+def warn_grad_cloning(for_display: Optional[bool], grad: bool, in_config: bool=True, verbose: bool=True) -> bool:
     """ for_display operations cannot be used with backprop
         if grad: for_display: False
         Args:
