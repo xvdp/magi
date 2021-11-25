@@ -13,6 +13,8 @@ torch.set_default_dtype(torch.float32) # reset float16 if set by previous test
 
 
 def get_dataset(name="ImageNet", **kwargs):
+    if 'dtype' not in kwargs:
+        kwargs['dtype'] = 'float32'
     if name == "ImageNet":
         if IMAGENET_ROOT is not None:
             return ImageNet(mode='val', **kwargs)
@@ -23,9 +25,9 @@ def get_dataset(name="ImageNet", **kwargs):
 
 
 def test_normalize():
-
+    
     N = Normalize()
-    dset = get_dataset('ImageNet', for_display=True)
+    dset = get_dataset('ImageNet', for_display=True, dtype='float32')
 
     item = dset.__getitem__()
     mean = item[0].mean().item()
@@ -49,7 +51,7 @@ def test_norm_grad():
     assert config.FOR_DISPLAY == True
     
     # check that setting grad, overrides config.FOR_DISPLAY
-    dset = get_dataset('ImageNet', grad=True)
+    dset = get_dataset('ImageNet', grad=True, dtype='float32')
     
     assert not config.FOR_DISPLAY, "grad shouldve overriten for display, didnt"
     d = dset.__getitem__()

@@ -1,7 +1,7 @@
 # Magi
 *Magister Lt. teacher*
 
-current STATUS: broken
+STATUS: version 0.0.7 - passes tests
 A collection of augmentation, training and dataloader wrappers for `pytorch`. 
 
 ## WIP - currently in translation from private repos
@@ -29,7 +29,7 @@ Transforms are classes which `__call__()` functionals. Functionals have a main t
 * differentiation - for backpropagation, triggered automatically
 
 
-Transformations have class parameter `__type__` that specify to the type of action on the data: `IO`, `Compose`, `Appearance`, `Resizing`,`Affine`. Even though IO 'transforms' cannot be strictly considered as transforms, for simplicity they are built with the same syntax. For instance opening images as properly formated tensors and displaying them, can be done with simple calls.
+Transformations have class parameter `__type__` that specify to the type of action on the data: `IO`, `Compose`, `Appearance`, `Resizing`, `Affine`. Even though IO 'transforms' cannot be strictly considered as transforms, for simplicity they are built with the same syntax. For instance opening images as properly formated tensors and displaying them, can be done with simple calls.
 ```python
     from magi.transforms import *
     x = Open()(<path0>) # x tensor shape 1CHW, torch default dtype.
@@ -111,5 +111,6 @@ Magi depends on submodules
 git clone https://github.com/xvdp/magi --recursive && cd magi
 python setup.py install
 
-焦げ koge
 ```
+<!--when koreto updated
+ git submodule foreach 'git pull origin main || :' -->

@@ -17,7 +17,7 @@ from ..utils import get_broadcastable
 from .transforms_rnd import Distribution, Probs
 
 tensorish = (int, float, list, tuple, np.ndarray, torch.Tensor, Distribution)
-Tensorish = Union[tensorish]
+Tensorish = Union[int, float, list, tuple, np.ndarray, torch.Tensor, Distribution]
 TensorItem = Union[torch.Tensor, Item]
 
 #pylint: disable=no-member

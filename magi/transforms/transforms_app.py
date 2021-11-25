@@ -3,20 +3,18 @@ Appearance Transforms dont change size or positions of data
 """
 from typing import Union, Optional
 
-import numpy as np
 import torch
+from .functional_base import Tensorish
 from .transforms_base import TransformApp
 from .transforms_rnd import Values, Probs
 from . import functional_app as F
 from .. import config
 
-_tensorish = (int, float, list, tuple, np.ndarray, torch.Tensor)
-_Tensorish = Union[_tensorish]
 
 __all__ = ["Normalize", "MeanCenter", "UnMeanCenter", "UnNormalize", "NormToRange", "Saturate", "Gamma", "SoftClamp"]
 
 # pylint: disable=no-member
-def _as_tensor(values: _Tensorish, ndims: int = 4, axis: int = 1) -> torch.Tensor:
+def _as_tensor(values: Tensorish, ndims: int = 4, axis: int = 1) -> torch.Tensor:
     """ Broadcast to ndims tensor, default 4, N,C,H,W
         for normalization over C default 1
     """
@@ -50,8 +48,8 @@ class Normalize(TransformApp):
 
     """
     def __init__(self,
-                 mean: _Tensorish = (0.4993829, 0.47735223, 0.42281782),
-                 std: _Tensorish = (0.23530918, 0.23156014, 0.23460476),
+                 mean: Tensorish = (0.4993829, 0.47735223, 0.42281782),
+                 std: Tensorish = (0.23530918, 0.23156014, 0.23460476),
                  ndims: int = 4,
                  axis: int = 1,
                  for_display: Optional[bool] = None, **kwargs) -> None:
@@ -101,8 +99,8 @@ class UnNormalize(TransformApp):
         axis        (int [1]) axis containing channels
     """
     def __init__(self,
-                 mean: _Tensorish = (0.4993829, 0.47735223, 0.42281782),
-                 std: _Tensorish = (0.23530918, 0.23156014, 0.23460476),
+                 mean: Tensorish = (0.4993829, 0.47735223, 0.42281782),
+                 std: Tensorish = (0.23530918, 0.23156014, 0.23460476),
                  ndims: int = 4,
                  axis: int = 1,
                  for_display: Optional[bool] = None) -> None:
@@ -165,14 +163,14 @@ class NormToRange(TransformApp):
                         p=0.5, distribution='Categorical')
     """
     def __init__(self,
-                 minimum: _Tensorish = 0.0,
-                 maximum: _Tensorish = 1.0,
-                 p: _Tensorish = 1.0,           # probability / optional args
+                 minimum: Tensorish = 0.0,
+                 maximum: Tensorish = 1.0,
+                 p: Tensorish = 1.0,           # probability / optional args
                  p_dims: Union[None, int, tuple, list] = 0,     # vary probability over dims
                  distribution: Optional[str] = "Uniform",
                  expand_dims: Union[None, int, tuple, list] = 0, # vary norm over dims
-                 minimum_b: _Tensorish = None,
-                 maximum_b: _Tensorish = None,
+                 minimum_b: Tensorish = None,
+                 maximum_b: Tensorish = None,
                  for_display: Optional[bool] = None,            # clone before appying
                  **kwargs) -> None:                             # kwargs for transforms.Values()
 
@@ -243,10 +241,10 @@ class Saturate(TransformApp):
     >>> Sat(m, sat=torch.tensor([[-2, 0, 2]]))
     """
     def __init__(self,
-                 p: _Tensorish = 1.0,                           # probability
+                 p: Tensorish = 1.0,                           # probability
                  p_dims: Union[None, int, tuple, list] = 0,     # vary probability over dims
-                 a: _Tensorish = 0.,                            # target saturation
-                 b: Optional[_Tensorish] = None,                # second target
+                 a: Tensorish = 0.,                            # target saturation
+                 b: Optional[Tensorish] = None,                # second target
                  distribution: Optional[str] = "Uniform",
                  expand_dims: Union[None, int, tuple, list] = 0,# vary saturation over dims
                  for_display: Optional[bool] = None,            # clone before appying
@@ -281,11 +279,11 @@ class Gamma(TransformApp):
                         None:       discrete between a and b, (or if b is None, a if p, else None)
     """
     def __init__(self,
-                 p: _Tensorish = 1.0,                           # probability
+                 p: Tensorish = 1.0,                           # probability
                  p_dims: Union[None, int, tuple, list] = 0,     # vary probability over dims
-                 a: _Tensorish = 1.0,                           # target gamma
-                 b: Optional[_Tensorish] = None,                # second target
-                 from_gamma: _Tensorish = 2.2,
+                 a: Tensorish = 1.0,                           # target gamma
+                 b: Optional[Tensorish] = None,                # second target
+                 from_gamma: Tensorish = 2.2,
                  distribution: Optional[str] = "Normal",
                  expand_dims: Union[None, int, tuple, list] = 0,# vary saturation over dims
                  for_display: Optional[bool] = None,            # clone before appying
@@ -323,11 +321,11 @@ class SoftClamp(TransformApp):
                         None:       discrete between a and b, (or if b is None, a if p, else None)
     """
     def __init__(self,
-                 p: _Tensorish = 1.0,                           # probability
+                 p: Tensorish = 1.0,                           # probability
                  p_dims: Union[None, int, tuple, list] = 0,     # vary probability over dims
-                 a: _Tensorish = 1.0,       # 0 -> torch.clamp(0,1), inf -> unit step function
-                 b: Optional[_Tensorish] = None,                # second target softness
-                 inflection: _Tensorish = 0.5,                  # inflection point 0.5 -> 1.
+                 a: Tensorish = 1.0,       # 0 -> torch.clamp(0,1), inf -> unit step function
+                 b: Optional[Tensorish] = None,                # second target softness
+                 inflection: Tensorish = 0.5,                  # inflection point 0.5 -> 1.
                  distribution: Optional[str] = "Normal",
                  expand_dims: Union[None, int, tuple, list] = 0,# vary softness over dims
                  for_display: Optional[bool] = None,            # clone before appying

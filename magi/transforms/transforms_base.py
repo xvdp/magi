@@ -21,8 +21,6 @@ from .. import config
 from .transforms_rnd import Distribution
 
 # pylint: disable=no-member
-_tensorish = (int, float, list, tuple, np.ndarray, torch.Tensor)
-_Tensorish = Union[_tensorish]
 _Dtype = Union[None, str, torch.dtype]
 _Device = Union[str, torch.device]
 

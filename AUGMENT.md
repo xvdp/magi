@@ -9,12 +9,10 @@ Trasformation types are: `IO`, `Compose`, `Sizing`, `Appearance`, `Affine`.
 Transform classes call similarly named functionals which handle different elements in the data passed generically wrapped with function `functional_base.transform()`. The purpose of `transform()` is clone or profile the data if requested.
 
 ## IO Transforms
-**`__type__ = 'IO'`**
-
-Not strictly 'augmentations' they have similar rules.
+**`__type__ = 'IO'`** Not strictly 'augmentations' they have similar rules.
 
 ### Open()
-Opens images into tensor `Item`. TODO: videos, audio, pointclouds
+Opens image file as tensor . TODO: videos, audio, pointclouds
 ### Show()
 General utility to show images. Can be called on `Item()`, `(Item(),...)`, `tensor`, `(tensor, ...)`. Plots 2d annotations.
 ## Composition Transforms

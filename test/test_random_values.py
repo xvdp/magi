@@ -3,6 +3,9 @@ import torch
 
 
 # pylint: disable=no-member
+torch.set_default_dtype(torch.float32) # reset float16 if set by previous test
+
+
 def test_constant():
 
     a=torch.tensor([[1,0.2,0.3]])
@@ -12,7 +15,7 @@ def test_constant():
 
 
     a=torch.tensor([1,0.2,0.3])
-    constant = Values(a)
+    constant = Values(a, expand_dims=None)
 
     assert constant.sample([34]).shape == constant.sample().shape == (1,3)
 
@@ -79,20 +82,26 @@ def test_matching():
     assert sat.sample((5,)).shape == torch.Size([5])
     assert sat.sample((5,4,6,4)).shape ==torch.Size([5, 1, 1, 1])
 
-    # Constants do not broadcast
+    # Constants do broadcast
     dic = {'a':-1, 'b':None, 'distribution':None, 'expand_dims':0}
     sat = Values(**dic)
     assert sat.sample().shape == torch.Size([1])
-    assert sat.sample((5,)).shape == torch.Size([1])
-    assert sat.sample((5,4,6,4)).shape ==torch.Size([1, 1, 1, 1])
+    assert sat.sample((5,)).shape == torch.Size([5])
+    assert sat.sample((5,4,6,4)).shape ==torch.Size([5, 1, 1, 1])
 
     dic = {'a':[-1,2,3], 'b':None, 'distribution':None, 'expand_dims':0}
     sat = Values(**dic)
     assert sat.sample().shape == torch.Size([1, 3])
-    assert sat.sample((5,)).shape == torch.Size([1, 3])
-    assert sat.sample((5,4,6,4)).shape ==torch.Size([1, 3, 1, 1])
+    assert sat.sample((5,)).shape == torch.Size([5, 3])
+    assert sat.sample((5,4,6,4)).shape ==torch.Size([5, 3, 1, 1])
 
-    # sat.sample().shape, sat.sample((5,)).shape, sat.sample((5,4,6,4)).shape
+    # TODO: expand beyond width?
+    dic = {'a':[-1,2,3], 'b':None, 'distribution':None, 'expand_dims':(0,3)}
+    sat = Values(**dic)
+    assert sat.sample().shape == torch.Size([1, 3])
+    assert sat.sample((5,)).shape == torch.Size([5, 3])
+    # assert sat.sample((5,4,6,4)).shape ==torch.Size([5, 3, 1, 4]) << will fail, should not
+
 
 
 def test_ps():

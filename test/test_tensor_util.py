@@ -70,6 +70,12 @@ def test_get_broadcastable_axis1():
     assert x.device == other.device
     assert x.dtype == other.dtype
 
+def test_get_broadcastable_axis1_tuple():
+    x = [0.3, 0.3, 1]
+    other = (1, 3, 20, 20)
+    x = get_broadcastable(x, other)
+    assert x.shape == (1, 3, 1, 1)
+
 
 def test_get_broadcastable_axis0():
     x = [0.3, 0.3, 1]
@@ -78,6 +84,13 @@ def test_get_broadcastable_axis0():
     assert x.shape == (3, 1, 1)
     assert x.device == other.device
     assert x.dtype == other.dtype
+
+def test_get_broadcastable_axis0_tuple():
+    x = [0.3, 0.3, 1]
+    other = (3, 20, 20)
+    x = get_broadcastable(x, other, axis=0)
+    assert x.shape == (3, 1, 1)
+
 
 
 def test_slicer():

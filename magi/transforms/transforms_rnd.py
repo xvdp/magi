@@ -10,11 +10,12 @@ from typing import Union, Optional
 import inspect
 from inspect import getfullargspec, signature
 import numpy as np
+from numpy.core import shape_base
 import torch
 import torch.distributions as tdist
 from koreto import Col
 
-from magi.utils.torch_util import broadcast_tensors, to_tensor, squeeze_trailing
+from magi.utils.torch_util import broadcast_tensors, get_broadcastable, to_tensor, squeeze_trailing
 
 from ..utils import torch_dtype, torch_device
 
@@ -137,7 +138,8 @@ class Distribution:
         return rep + ")"
 
 
-
+# TODO wip. warn and reduce samples with value size > 1 and value size != sample shape at index
+# TODO wip. expand dims beyond dims with value size >1
 class Values(Distribution):
     """ Initializes samplers for randomizing augmentation transforms based on torch.distributions.
     Values().sample(shape) -> torch tensor with broadcasting rules that depend on:
@@ -350,9 +352,17 @@ class Values(Distribution):
 
         if self.__ is None:
             out = self.vals
-            print("const shape, input shape -> sample_shape", out.shape, shape, sample_shape)
-            out =  torch.broadcast_to(out, sample_shape.tolist())
-            # out = torch.stack([self.a for _ in range(sample_shape[0])])# constant
+            if out.ndim > len(sample_shape):
+                sample_shape = sample_shape.tolist() + list(self.vals.shape)[len(sample_shape):]
+            elif len(shape) > out.ndim:
+                out = out.view(*out.shape, *[1]*(len(shape) - out.ndim))
+            print(sample_shape, out.shape)
+            for i, s in enumerate(sample_shape):
+                if out.shape[i] > 1 and s > 1 and s != out.shape[i]:
+                    out = out.mean(axis=i, keepdims=True)
+                elif s > 1 and out.shape[i] == 1:
+                    out = torch.cat([out]*s, axis=i)
+
         elif self.__.__class__.__name__ in ('Categorical', 'Binomial'):
             out = self.vals[self.__.sample(sample_shape)]
         else:

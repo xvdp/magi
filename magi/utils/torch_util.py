@@ -29,12 +29,14 @@ extension:
 from collections import namedtuple
 from typing import Union, Optional
 import logging
+from numpy.lib.arraysetops import isin
 import torch
 import numpy as np
 from koreto import Col, sround
 from .. import config
 
 _torchable = (int, float, list, tuple, np.ndarray, torch.Tensor)
+_Torchable = Union[int, float, list, tuple, np.ndarray, torch.Tensor]
 _vector = (np.ndarray, torch.Tensor)
 
 # pylint: disable=no-member
@@ -319,14 +321,18 @@ def _apply_single_axis(x: torch.Tensor, hold_axis: int) -> tuple:
 #
 # tensor (shape, dtype, device) resolution
 #
-def is_broadcastable(x: Union[_torchable], y: torch.Tensor) -> bool:
+def is_broadcastable(x: _Torchable, y: Union[torch.Tensor, tuple]) -> bool:
     """ True if x * other -> OK
     """
-    if torch.is_tensor(x) and x.ndim == y.ndim and x.dtype == y.dtype and x.device == y.device:
-        return all(x.shape[i] in (1, y.shape[i]) for i in range(x.ndim))
+    if torch.is_tensor(x):
+        if torch.is_tensor(y) and x.ndim == y.ndim and x.dtype == y.dtype and x.device == y.device:
+            return all(x.shape[i] in (1, y.shape[i]) for i in range(x.ndim))
+        elif isinstance(y, (list, tuple)) and x.ndim == len(y):
+            return all(x.shape[i] in (1, y[i]) for i in range(x.ndim))
+
     return False
 
-def get_broadcastable(x: Union[_torchable], other: torch.Tensor, axis: int = 1) -> torch.Tensor:
+def get_broadcastable(x: _Torchable, other: Union[torch.Tensor, tuple], axis: int = 1) -> torch.Tensor:
     """ Convert 'x' to tensor with same dtype, device, ndim as tensor
     with x.shape[i] == tensor.shape[i] or axis i reduced to 1 by mean
 
@@ -334,7 +340,7 @@ def get_broadcastable(x: Union[_torchable], other: torch.Tensor, axis: int = 1) 
         x       (list, tuple, int, float, ndarray torch.Tensor)
             if ndim == 1 and len() > 1 and len() == len(tensor.shape[axis]
 
-        tensor  torch.Tensor) tensor to match
+        other  (torch.Tensor | tuple) tensor to match
             if tensor or ndarray, axis size equal x or reduced to mean
 
         axis    (int [min(1 | tensor.ndim-1)]) only used broadcasting x with ndim==1
@@ -356,47 +362,53 @@ def get_broadcastable(x: Union[_torchable], other: torch.Tensor, axis: int = 1) 
         return x
 
     assert isinstance(x, _torchable), f"invalid type {type(x)}"
-    assert other.is_floating_point(), f"only floating_point tensors, found {other.dtype}"
-    with torch.no_grad():
+    assert isinstance(other, (list, tuple)) or (torch.is_tensor(other) and other.is_floating_point()), f"only floating_point tensors, found {other.dtype}"
 
-        axis = min(axis, other.ndim -1)
-        shape = [1]*other.ndim
+    _other_ndim = other.ndim if torch.is_tensor(other) else len(other)
+    _other_dtype = other.dtype if torch.is_tensor(other) else torch.get_default_dtype()
+    _other_shape = other.shape if torch.is_tensor(other) else other
+    _other_device = other.device if torch.is_tensor(other) else 'cpu'
+
+    with torch.no_grad():
+        axis = min(axis, _other_ndim -1)
+        shape = [1]*_other_ndim
 
         if isinstance(x, (int, float)):
             shape[axis] = 1
         elif all(isinstance(i, (int,float)) for i in x):
             shape[axis] = len(x)
         else:
-            x = torch.as_tensor(x).to(dtype=other.dtype)
+            x = torch.as_tensor(x).to(dtype=_other_dtype)
 
         if isinstance(x, _vector):
-            if x.ndim > other.ndim and all(n==1 for n in x.shape[other.ndim:]):
-                x = x.view(*[d for d in x.shape[:other.ndim]])
+            if x.ndim > _other_ndim and all(n==1 for n in x.shape[_other_ndim:]):
+                x = x.view(*[d for d in x.shape[:_other_ndim]])
 
             _msg = "Cannot reduce non empty trainling dimensions "
-            assert x.ndim <= other.ndim, f"{Col.YB}{_msg}{x.shape}[:{other.ndim}]{Col.AU}"
-            x = torch.as_tensor(x, dtype=other.dtype)
+            assert x.ndim <= _other_ndim, f"{Col.YB}{_msg}{x.shape}[:{_other_ndim}]{Col.AU}"
+            x = torch.as_tensor(x, dtype=_other_dtype)
             if axis >= x.ndim:
                 x = x.view(*[1]*(axis - x.ndim + 1), *x.shape)
 
-            reduce = [i for i in range(x.ndim) if x.shape[i] not in (1, other.shape[i])]
+            reduce = [i for i in range(x.ndim) if x.shape[i] not in (1, _other_shape[i])]
             if reduce:
                 x = x.mean(axis=reduce, keepdims=True)
             shape[:x.ndim] = x.shape
 
-        x = torch.as_tensor(x).view(*shape).to(dtype=other.dtype)
+        x = torch.as_tensor(x).view(*shape).to(dtype=_other_dtype)
 
         # reduce mean all dims not equal to 'other' or 1
-        _bad_dims = [i for i in range(len(x.shape)) if x.shape[i] not in (1, other.shape[i])]
+        _bad_dims = [i for i in range(len(x.shape)) if x.shape[i] not in (1, _other_shape[i])]
         if _bad_dims:
             x = x.mean(_bad_dims, keepdims=True)
-        return x.to(device=other.device)
+        return x.to(device=_other_device)
 
 ###
 #
 # extend broadcast_tensors to align data front or back
 #
-def to_tensor(x: Union[_torchable], dtype: Optional[torch.dtype] = None,
+def to_tensor(x: _Torchable,
+              dtype: Optional[torch.dtype] = None,
               device: Optional[str] = None) -> torch.Tensor:
     """Converts float, int, list, tuple ndarray, or 0d tensor to >=1d tensor
     x   int, float, np.ndarray, torch.tensor
@@ -411,7 +423,7 @@ def to_tensor(x: Union[_torchable], dtype: Optional[torch.dtype] = None,
         return torch.as_tensor([x], **_to)
     return torch.as_tensor(x, **_to)
 
-def squeeze_trailing(x: Union[_torchable], dtype: Optional[torch.dtype] = None,
+def squeeze_trailing(x: _Torchable, dtype: Optional[torch.dtype] = None,
                      device: Optional[str] = None, min_ndim: int = 1) -> torch.Tensor:
     """Remvoes all trailing signletons, stopping at ndim = 1
         e.g [1,3,1,1] -> [1,3]
@@ -421,7 +433,10 @@ def squeeze_trailing(x: Union[_torchable], dtype: Optional[torch.dtype] = None,
         x = x.squeeze(-1)
     return x
 
-def broadcast_tensors(*tensors, align: int = -1, dtype: torch.dtype = None, device: str = None) -> tuple:
+def broadcast_tensors(*tensors,
+                      align: int = -1,
+                      dtype: Optional[torch.dtype] = None,
+                      device: Optional[str] = None) -> tuple:
     """ torch.broadcast_tensors() with stack order option
     Args
         *tensors    int, float, tuple, list, ndarray, tensor
