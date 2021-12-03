@@ -14,10 +14,7 @@ import torch
 import torch.distributions as tdist
 from koreto import Col
 
-from magi.utils.torch_util import broadcast_tensors, to_tensor, squeeze_trailing
-
-from ..utils import torch_dtype, torch_device
-
+from ..utils import torch_dtype, torch_device, broadcast_tensors, to_tensor, squeeze, assert_in
 
 # pylint: disable=no-member
 _tensorish = (int, float, list, tuple, np.ndarray, torch.Tensor)
@@ -79,8 +76,7 @@ class Distribution:
         values entered to the distribution with shape (1,1,K) will return samples of shape N,C,H,K (if dims=(0,1,2) )
         or shape (1,1,1,K) if dims=None)
         """
-        if isinstance(dims, int):
-            dims = (dims,)
+        dims = (dims,) if isinstance(dims, int) else dims
 
         # shape of values- either constant or from distribution
         if 'vals' in self.__dict__ and self.vals is not None:
@@ -99,8 +95,6 @@ class Distribution:
     
         if _squeeze_front and self.__ is not None:
             batch_mask = batch_mask[:min(_squeeze_front)]
-            # batch_mask[min(_squeeze_front):] = 0
-
             _squeeze_front = min(_squeeze_front)
 
             params = {key:val for key, val in self.__.__dict__.items()
@@ -111,25 +105,6 @@ class Distribution:
                     for i in range(_squeeze_front):
                         params[key] = val.squeeze(0)
             self.__ = self.__.__class__(**params)
-
-        # print(" batch_mask", batch_mask)
-        # print("_squeeze_front", _squeeze_front)
-
-        # if _squeeze_front:
-        #     batch_mask = batch_mask[:min(_squeeze_front)]
-        #     # batch_mask[min(_squeeze_front):] = 0
-
-        #     _squeeze_front = min(_squeeze_front)
-        #     # If parameters need squeezing, reinit distribution
-        #     if self.__ is not None:
-        #         params = {key:val for key, val in self.__.__dict__.items()
-        #                   if torch.is_tensor(val) and "_" not in key}
-
-        #         for key, val in params.items():
-        #             if torch.is_tensor(val):
-        #                 for i in range(_squeeze_front):
-        #                     params[key] = val.squeeze(0)
-        #         self.__ = self.__.__class__(**params)
 
         self.batch_mask = torch.as_tensor(batch_mask)
 
@@ -153,8 +128,6 @@ class Distribution:
         return rep + ")"
 
 
-# TODO wip. warn and reduce samples with value size > 1 and value size != sample shape at index
-# TODO wip. expand dims beyond dims with value size >1
 class Values(Distribution):
     """ Initializes samplers for randomizing augmentation transforms based on torch.distributions.
     Values().sample(shape) -> torch tensor with broadcasting rules that depend on:
@@ -306,7 +279,7 @@ class Values(Distribution):
 
         ch_args = []
         for _, val in kch_args.items():
-            ch_args.append(squeeze_trailing(val, min_ndim=0))
+            ch_args.append(squeeze(val, side=-1, min_ndim=0))
         if ch_args:
             ch_args = list(broadcast_tensors(*ch_args, dtype=self.dtype))
 
@@ -330,7 +303,7 @@ class Values(Distribution):
                 distribution = "Categorical"
             _args['probs'] = self._get_probs((size,), distribution, kwargs)
             self.__ = torch.distributions.__dict__[distribution](**_args)
-            self.vals = squeeze_trailing(torch.stack(ch_args), min_ndim=0)
+            self.vals = squeeze(torch.stack(ch_args), side=-1, min_ndim=0)
 
         # 3. continuous distributions
         else:
@@ -350,7 +323,7 @@ class Values(Distribution):
 
             else:
                 self._fill_missing_params(ch_args, _args)
-                if distribution == "Uniform":
+                if distribution == "Uniform": # TODO: debug a: CHW b: float - see vistest ERR
                     _args['low'], _args['high'] = self._sort_values(_args['low'], _args['high'])
 
             self.__ = torch.distributions.__dict__[distribution](**_args)
@@ -427,7 +400,7 @@ class Values(Distribution):
             b = _ab[1]
             if any(b==a):
                 b[b==a] = b[b==a] + 0.001
-        return squeeze_trailing(a, min_ndim=0), squeeze_trailing(b, min_ndim=0)
+        return squeeze(a, side=-1, min_ndim=0), squeeze(b, side=-1, min_ndim=0)
 
     @staticmethod
     def loc_scale_from_range(a, b, _args, sigma=3):
@@ -438,7 +411,7 @@ class Values(Distribution):
         _args['scale'] = to_tensor(_args['scale']).abs()
 
         for arg in ['loc', 'scale']:
-            _args[arg] = squeeze_trailing(_args[arg], min_ndim=0)
+            _args[arg] = squeeze(_args[arg], side=-1, min_ndim=0)
 
     @staticmethod
     def _distribution_kwargs(dist: str, kwargs: dict) -> dict:
@@ -457,7 +430,7 @@ class Values(Distribution):
             if key in kwargs:
                 out[key] = kwargs.pop(key)
                 if isinstance(out[key], _tensorish):
-                    out[key] = squeeze_trailing(out[key], min_ndim=0)
+                    out[key] = squeeze(out[key], side=-1, min_ndim=0)
             elif value.default is inspect._empty or (_probs and key == 'probs'):
                 out[key] = None
         return out
@@ -515,14 +488,32 @@ class Probs(Values):
         super().__init__(**args, seed=seed, dtype=dtype, device=device)
 
 
+def validate_dims(expand_dims: Union[None, int, tuple, list],
+                  allowed: Optional[tuple] = None,
+                  msg: str = " ") -> tuple:
+    """ Not all transforms allow expanding all dimensions
+    Args:
+        expand_dims     (tuple, int, None) as req by transform
+        allowed         (tuple [None]) None allows any expansion
+        msg             (str) assert message
+    """
+    if allowed is not None:
+        assert_in(expand_dims, allowed, msg=msg)
+    if isinstance(expand_dims, int):
+        expand_dims = (expand_dims,)
+    return expand_dims
+
+
+##
+#
+# Debug
+#
 def print_distributions():
     """ print torch distributions
     """
     _D = [d for d in tdist.__dict__ if isinstance(tdist.__dict__[d], type) and 'Transform' not in d]
     for _d in _D:
         print(f"{_d:35}{[a for a in getfullargspec(tdist.__dict__[_d]).args if a not in 'self']}")
-
-
 
 
 """

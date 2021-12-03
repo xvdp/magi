@@ -63,8 +63,9 @@ Transforms leveraging nn.interpolate. Dimensions can be expanded per batch or ch
 
 ### **Normalize()**
 With alias  `MeanCenter()` standard normalization. Typycally for `x` in dataset `X`, `(x - X.mean())/X.std()`. Arguments `'mean'` and `'std'`  can inherit from class `Values()` i.e be probabilistic. 
-
-***WIP TODO: missing probability of mean and std values***
+<div align="center">
+  <img width="100%" src=".github/Normalize_random.png">
+</div>
 
 ### **UnNormalize()**
 Inverse of normalize `x * X.std() + X.mean()`, has alias `UnMeanCenter()`

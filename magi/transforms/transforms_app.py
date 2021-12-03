@@ -22,7 +22,31 @@ def _as_tensor(values: Tensorish, ndims: int = 4, axis: int = 1) -> torch.Tensor
     shape[axis] = -1
     return torch.as_tensor(values, dtype=torch.__dict__[config.DTYPE]).view(*shape)
 
-class Normalize(TransformApp):
+class NormalizationTransform(TransformApp):
+    """ parent of Normalize and Unnormalize
+    """
+    def __init__(self,
+                 mean: Tensorish = (0.4993829, 0.47735223, 0.42281782),
+                 std: Tensorish = (0.23530918, 0.23156014, 0.23460476),
+                 p: Tensorish = 1.0,                            # probability / optional args
+                 p_dims: Union[None, int, tuple, list] = 0,     # vary probability over dims
+                 distribution: Optional[str] = "Uniform",
+                 expand_dims: Union[None, int, tuple, list] = 0, # vary norm over dims
+                 mean_b: Tensorish = None,
+                 std_b: Tensorish = None,
+                 for_display: Optional[bool] = None, **kwargs) -> None:
+        super().__init__(for_display=for_display)
+
+        kw_mean = {key:kwargs.pop(k) for k, key in self.extract_keys("mean", **kwargs).items()}
+        kw_std = {key:kwargs.pop(k) for k, key in self.extract_keys("std", **kwargs).items()}
+
+        self.mean = Values(a=mean, b=mean_b, expand_dims=expand_dims,
+                           distribution=distribution, **{**kwargs, **kw_mean})
+        self.std = Values(a=std, b=std_b, expand_dims=expand_dims,
+                          distribution=distribution, **{**kwargs, **kw_std})
+        self.p = Probs(p=p, expand_dims=p_dims)
+
+class Normalize(NormalizationTransform):
     """ similar to torchvision.transforms.Normalize
 
     Normalize a tensor image with mean and standard deviation.
@@ -35,30 +59,21 @@ class Normalize(TransformApp):
                         sequence:   per channel mean
                         None:       ImageNet mean
                         int, float: target mean
+        mean_b _c _d ... additional mean values for randomization
+
         std         (sequence [None], float)
                         sequence:   per channel stdev
                         None:       ImageNet  stdev
                         int, float: target stdev
+        std_b _c _d ... additional mean values for randomization
+        distribution    (str ['Uniform'])
+        p           int [1] probability of normalization
+        p_dims      expand dimensions for p
+
         for_display (bool [None]) bypasses config.FOR_DISPLAY, if true Items are cloned
             ..SHOULD NOT BE USED unless original tensors are required unmodified
 
-        ndims       (int [4]) num of dims of the item no normalize
-        axis        (int [1]) axis containing channels
-
-
     """
-    def __init__(self,
-                 mean: Tensorish = (0.4993829, 0.47735223, 0.42281782),
-                 std: Tensorish = (0.23530918, 0.23156014, 0.23460476),
-                 ndims: int = 4,
-                 axis: int = 1,
-                 for_display: Optional[bool] = None, **kwargs) -> None:
-        super().__init__(for_display=for_display)
-        self.mean = _as_tensor(values=mean, ndims=ndims, axis=axis)
-        self.std = _as_tensor(values=std, ndims=ndims, axis=axis)
-
-        # if "meanb" in kwargs:
-
     def __call__(self, data: Union[torch.Tensor, list], **kwargs) -> Union[torch.Tensor, list]:
         """ Returns (data - mean) / std same type as input
         Args:
@@ -70,7 +85,8 @@ class Normalize(TransformApp):
         kw_call = self.update_kwargs(**kwargs)
         return F.normalize(data, **kw_call)
 
-class UnNormalize(TransformApp):
+
+class UnNormalize(NormalizationTransform):
     """
     UnNormalize a tensor image with mean and standard deviation.
     Given mean: ``(M1,...,Mn)`` and std: ``(S1,..,Sn)`` for ``n`` channels, this transform
@@ -85,28 +101,22 @@ class UnNormalize(TransformApp):
                         sequence:   per channel mean
                         None:       ImageNet mean
                         int, float: target mean
+        mean_b _c _d ... additional mean values for randomization
+
         std         (sequence [None], float)
                         sequence:   per channel stdev
                         None:       ImageNet  stdev
                         int, float: target stdev
+        std_b _c _d ... additional mean values for randomization
+        distribution    (str ['Uniform'])
+        p           int [1] probability of normalization
+        p_dims      expand dimensions for p
+
         for_display (bool [None]) bypasses config.FOR_DISPLAY, if true Items are cloned
             ..SHOULD NOT BE USED unless original tensors are required unmodified
 
-        ndims       (int [4]) num of dims of the item no normalize
-        axis        (int [1]) axis containing channels
     """
-    def __init__(self,
-                 mean: Tensorish = (0.4993829, 0.47735223, 0.42281782),
-                 std: Tensorish = (0.23530918, 0.23156014, 0.23460476),
-                 ndims: int = 4,
-                 axis: int = 1,
-                 for_display: Optional[bool] = None) -> None:
-        super().__init__(for_display=for_display)
-
-
-        self.mean =_as_tensor(values=mean, ndims=ndims, axis=axis)
-        self.std = _as_tensor(values=std, ndims=ndims, axis=axis)
-
+ 
     def __call__(self, data: Union[torch.Tensor, list], **kwargs) -> Union[torch.Tensor, list]:
         """ Returns (data - mean) / std same type as input
         Args:

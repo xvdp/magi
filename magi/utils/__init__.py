@@ -1,6 +1,7 @@
 """@ xvdp"""
+from .asserts import *
 from .torch_util import torch_dtype, str_dtype, is_torch_strdtype, torch_device
-from .torch_util import to_tensor, squeeze_trailing, get_broadcastable, broadcast_tensors
+from .torch_util import to_tensor, get_broadcastable, broadcast_tensors
 from .torch_util import tensor_apply, tensor_apply_vals, slicer, squeeze
 from .torch_util import check_contiguous, warn_grad_cloning, logtensor, logndarray
 from .np_util import *

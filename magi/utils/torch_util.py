@@ -29,10 +29,10 @@ extension:
 from collections import namedtuple
 from typing import Union, Optional
 import logging
-from numpy.lib.arraysetops import isin
 import torch
 import numpy as np
 from koreto import Col, sround
+from .asserts import loop_on_list
 from .. import config
 
 _torchable = (int, float, list, tuple, np.ndarray, torch.Tensor)
@@ -44,25 +44,32 @@ _vector = (np.ndarray, torch.Tensor)
 ###
 # logging values, shape, dtype, device
 #
-def logtensor(x, msg=""):
+@loop_on_list
+def logtensor(x: Union[torch.Tensor, list, tuple], msg: str = "", indent: str = "") -> None:
     """ log tensor properties, for debug"""
     assert isinstance(x, torch.Tensor)
-    _dtype = f" {x.dtype.__repr__().split('.')[-1]}"
+    _dt = f" {x.dtype.__repr__().split('.')[-1]}"
+    _device = x.device.type
+    _grad = x.requires_grad
     _min = f" min {sround(x.min().item(), 2)}"
     _max = f" max {sround(x.max().item(), 2)}"
     _mean = "" if not x.is_floating_point() else f", mean {sround(x.mean().item(), 2)}"
-    print(f"{msg}{tuple(x.shape)} {_dtype} {x.device.type} grad {x.requires_grad}{_mean},{_min},{_max}")
+    print(f"{indent}{msg}{tuple(x.shape)} {_dt} {_device} grad {_grad}{_mean},{_min},{_max}")
 
-def logndarray(x, msg=""):
+@loop_on_list
+def logndarray(x: Union[np.ndarray, list, tuple], msg: str = "", indent: str = "") -> None:
     """ log tensor properties, for debug"""
     assert isinstance(x, np.ndarray)
     _min = f" min {sround(x.min().item(), 2)}"
     _max = f" max {sround(x.max().item(), 2)}"
     _mean = f" mean {sround(x.mean().item(), 2)}"
-    print(f"{msg}{tuple(x.shape)},{_mean},{_min},{_max}")
+    print(f"{indent}{msg}{tuple(x.shape)},{_mean},{_min},{_max}")
 
-
-def warn_grad_cloning(for_display: Optional[bool], grad: bool, in_config: bool=True, verbose: bool=True) -> bool:
+def warn_grad_cloning(for_display: Optional[bool],
+                      grad: bool,
+                      in_config:
+                      bool=True,
+                      verbose: bool=True) -> bool:
     """ for_display operations cannot be used with backprop
         if grad: for_display: False
         Args:
@@ -96,6 +103,7 @@ def slicer(shape: tuple,
         >>> _slice # -> (2:3, :, 5:6)
         >>> x[_slice].shape
         torch.Size([1, 3, 1, 20])
+    .. used in Sizing transforms
     """
     assert len(dims) == len(vals), f" {len(dims)} dims == {len(vals)} vals"
     assert max(dims) < len(shape), f"cannot slice dim {max(dims)} over shape {shape}"
@@ -107,17 +115,6 @@ def slicer(shape: tuple,
         _to[dim] = vals[i] + 1
     return tuple(slice(i, j) for (i, j) in zip(fro, _to))
 
-def squeeze(x: torch.Tensor, side: int = 0, min_ndim: int = 1) -> torch.Tensor:
-    """ recursive squeeze till no more squeezing is possible
-    Args
-        x           tensor
-        side        int [0] | -1, left or right
-        min_ndim    int [1] | 0, return min ndim
-    """
-    while x.shape[side] == 1 and x.ndim > min_ndim:
-        x = x.squeeze(side)
-    return x
-
 def check_contiguous(x: torch.Tensor, verbose: bool = False, msg: str = "") -> torch.Tensor:
     """ Check if thensor is contiguous, if not, force it
         permutations result in non contiguous tensors which lead to cache misses
@@ -128,7 +125,7 @@ def check_contiguous(x: torch.Tensor, verbose: bool = False, msg: str = "") -> t
     if x.is_contiguous():
         return x
     if verbose:
-        logging.warning(msg+"tensor was not continuous, making continuous")
+        logging.warning(f"{Col.YB}{msg}tensor was not continuous, making continuous{Col.AU}")
     return x.contiguous()
 
 ###
@@ -423,14 +420,20 @@ def to_tensor(x: _Torchable,
         return torch.as_tensor([x], **_to)
     return torch.as_tensor(x, **_to)
 
-def squeeze_trailing(x: _Torchable, dtype: Optional[torch.dtype] = None,
-                     device: Optional[str] = None, min_ndim: int = 1) -> torch.Tensor:
-    """Remvoes all trailing signletons, stopping at ndim = 1
-        e.g [1,3,1,1] -> [1,3]
+def squeeze(x: _Torchable,
+            side: int = 0,
+            min_ndim: int = 1,
+            dtype: Optional[torch.dtype] = None,
+            device: Optional[str] = None) -> torch.Tensor:
+    """ recursive squeeze till no more squeezing is possible
+    Args
+        x           tensor
+        side        int [0] | -1, left or right
+        min_ndim    int [1] | 0, return min ndim
     """
     x = to_tensor(x, dtype, device)
-    while len(x.shape) and x.ndim > min_ndim and x.shape[-1] == 1:
-        x = x.squeeze(-1)
+    while len(x.shape) and x.shape[side] == 1 and x.ndim > min_ndim:
+        x = x.squeeze(side)
     return x
 
 def broadcast_tensors(*tensors,

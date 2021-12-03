@@ -4,55 +4,32 @@ Sizing Transforms, output tensor size is changed
 """
 
 from typing import Union, Optional
-import logging
-import numpy as np
 import torch
-from torch.distributions import Bernoulli
-import torchvision.transforms as TT
-from koreto import Col
-
 from .transforms_base import Transform
-from .transforms_rnd import Values
+from .transforms_rnd import Values, validate_dims
+from ..utils import assert_in
 from . import functional_siz as F
-from .. import config
-
 
 # pylint: disable=no-member
 #####
 #
 # crops
-#
-def valid_dims(expand_dims, max_dim=1):
-    if expand_dims is None:
-        return expand_dims
-    if isinstance(expand_dims, int):
-        expand_dims = (expand_dims,)
-    assert isinstance(expand_dims, (list, tuple)), f"expand dims, tuple expected, got {expand_dims}"
-    if len(expand_dims) == 0:
-        return None
-    if max_dim is not None:
-        assert max(expand_dims) <= max_dim, f"max epxandable dimesnion {max_dim}, got {expand_dims}"
-    return expand_dims
 
 class SqueezeCrop(Transform):
-    """Crops the given Torch Image and Size
+    """Sizing Transform: Crops and resizes to square,
     Args:
-        size (int, tuple of ints, None): output size of crop
+        size (int, tuple of ints, None): output size of crop: NOT probailisic
             None: size is min side
             int: crop to square
         interploation   (str ['linear']) | 'cubic'
 
-        ratio: (float) [0.5]) squeeze to crop ratio
+        ratio: (float) [0.5]) squeeze to crop ratio: probabilistic arg
             if ratio == 0: only squeezes
             if ratio == 1: only crops
-
         ratio_b (float [None]) if second ratio passed, squeeze to crop ratio can be prbabilistic
         distribution (str ['Uniform']) | in Values
         expand_dims (tuple, int [None]), max: 1, Sizing Transforms only expands Batch or channel dim
-
-    TODO ratio and ratio_b, a, b, loc= scale= ..
-    TODO targets -> annotation strategy for multiple channels
-    TODO collapse identical dims
+    TODO: add probabilistic crop shift and crop percentage of smallest side.
     """
     __type__ = "Sizing"
     def __init__(self,
@@ -70,7 +47,8 @@ class SqueezeCrop(Transform):
         ratio = min(1, max(ratio, 0))
         ratio_b = ratio_b if ratio_b is None else min(1, max(ratio_b, 0))
 
-        expand_dims = valid_dims(expand_dims)
+        expand_dims = validate_dims(expand_dims, allowed=(None,0,1),
+                                    msg="On 'Sizing' Transforms, expand_dims")
         self.ratio = Values(a=ratio, b=ratio_b, expand_dims=expand_dims,
                             distribution=distribution, **kwargs)
         self.interpolation = interpolation

@@ -5,7 +5,6 @@ transform_profile() lightweight memory and call stack debugger
 
 """
 from typing import Union, Callable, Optional
-import inspect
 import logging
 import numpy as np
 import torch
@@ -20,10 +19,11 @@ tensorish = (int, float, list, tuple, np.ndarray, torch.Tensor, Distribution)
 Tensorish = Union[int, float, list, tuple, np.ndarray, torch.Tensor, Distribution]
 TensorItem = Union[torch.Tensor, Item]
 
-#pylint: disable=no-member
+# pylint: disable=no-member
 
 ###
-# functional generic transform
+#
+# functional generic transform handling cloning and memory profiling
 #
 def transform(data: TensorItem,
               func: Callable,
@@ -42,7 +42,7 @@ def transform(data: TensorItem,
     Args to transform function
         **kwargs    function arguments
     """
-    mode = None if not 'mode' in kwargs else kwargs.pop('mode')
+    mode = None if 'mode' not in kwargs else kwargs.pop('mode')
 
     # Apply transform to tensor
     if isinstance(data, torch.Tensor):
@@ -82,6 +82,10 @@ def transform_profile(data: TensorItem,
 
     return transform(data=data, func=func, kind_keys=kind_keys, for_display=for_display, **kwargs)
 
+###
+#
+# distrubution samplers
+#
 def get_bernoulli_like(x: Tensorish, like: TensorItem) -> torch.Tensor:
 
     _reinit = isinstance(x, float) and x > 0 and x < 1
@@ -89,9 +93,7 @@ def get_bernoulli_like(x: Tensorish, like: TensorItem) -> torch.Tensor:
     _reinit |= isinstance(x, (list, tuple)) and not all(i in (0, 1) for i in x)
     if _reinit:
         x = Probs(p=x, expand_dims=0)
-
     return get_sample_like(x, like=like)
-
 
 def get_sample_like(x: Tensorish, like: TensorItem) -> torch.Tensor:
     """ sample from Value, Probs
@@ -149,4 +151,3 @@ def p_none(p: Union[int, float, torch.Tensor]) -> bool:
 def p_some(p: Union[int, float, torch.Tensor]) -> bool:
     """ True if p is tensor with some but not all values == 1."""
     return not isinstance(p, (float, int)) and len(p) > p.sum().item() > 0
-

@@ -18,7 +18,7 @@ import torch
 
 from ..utils import to_saturation, get_broadcastable, broadcast_tensors, tensor_apply_vals
 from .functional_base import transform, transform_profile, Tensorish, TensorItem
-from .functional_base import p_all, p_none, get_sample_like, get_bernoulli_like
+from .functional_base import p_none, get_sample_like, get_bernoulli_like
 
 
 # pylint: disable=no-member
@@ -68,10 +68,10 @@ def normalize_tensor(x: torch.Tensor,
     mean = get_sample_like(mean, like=x)
     std = get_sample_like(std, like=x)
 
-    if p_all(p):
+    if p.sum() == torch.prod(torch.as_tensor(p.shape)):
         return normalize_proc(x, mean, std)
 
-    return torch.lerp(x, normalize_proc(x, mean, std, inplace=True), p)
+    return torch.lerp(x, normalize_proc(x, mean, std, inplace=False), p)
 
 
 def normalize_proc(x: torch.Tensor,
@@ -122,10 +122,10 @@ def unnormalize_tensor(x: torch.Tensor,
     mean = get_sample_like(mean, like=x)
     std = get_sample_like(std, like=x)
 
-    if p_all(p):
+    if p.sum() == torch.prod(torch.as_tensor(p.shape)):
         return unnormalize_tensor_proc(x, mean, std, clip)
 
-    return torch.lerp(x, unnormalize_tensor_proc(x, mean, std, clip, inplace=True), p)
+    return torch.lerp(x, unnormalize_tensor_proc(x, mean, std, clip, inplace=False), p)
 
 def unnormalize_tensor_proc(x: torch.Tensor,
                             mean: Tensorish,
@@ -190,7 +190,7 @@ def normtorange_tensor(x: torch.Tensor,
     minimum = get_sample_like(minimum, like=x)
     maximum = get_sample_like(maximum, like=x)
 
-    if p_all(p):
+    if p.sum() == torch.prod(torch.as_tensor(p.shape)):
         return normtorange_proc(x, minimum, maximum)
 
     return torch.lerp(x, normtorange_proc(x, minimum, maximum, inplace=False), p)
@@ -262,15 +262,15 @@ def saturate_tensor(x: torch.Tensor,
 
     sat = get_sample_like(sat, like=x)
 
-    if p_all(p):
+    if p.sum() == torch.prod(torch.as_tensor(p.shape)):
         return to_saturation(x, sat)
 
-    print(x.shape, sat.shape, p.shape)
     return torch.lerp(x, to_saturation(x, sat), p)
 
     # # TODO profile if lerp, loop or multiprocess
     # for i, _p in enumerate(p):
     #     if p_all(_p):
+    
     #         x[i:i+1] = to_saturation(x[i:i+1], sat[i:i+1])
     # return x
 
@@ -316,7 +316,7 @@ def gamma_tensor(x: torch.Tensor,
     values = get_sample_like(values, like=x)
     from_gamma = get_broadcastable(from_gamma, other=x, axis=1)
 
-    if p_all(p):
+    if p.sum() == torch.prod(torch.as_tensor(p.shape)):
         return gamma_proc(x, values, from_gamma=from_gamma)
 
     return torch.lerp(x, gamma_proc(x, values, from_gamma=2.2, inplace=False), p)
@@ -372,7 +372,7 @@ def softclamp_tensor(x: torch.Tensor,
     soft = get_sample_like(soft, like=x)
     inflection = get_sample_like(inflection, like=x)
 
-    if p_all(p):
+    if p.sum() == torch.prod(torch.as_tensor(p.shape)):
         return softclamp_proc(x, soft, inflection)
 
     return torch.lerp(x, softclamp_proc(x, soft, inflection), p)

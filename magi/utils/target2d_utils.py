@@ -16,9 +16,7 @@ _OptTensorable = Union[None, int, float, list, tuple, Tensor]
 #
 #   2d Transformations
 #
-# TODO: should work, test, annotate, cleanup,
 # TODO: perspective, lens distort, 3d
-# TODO: decide if target format conversions occur always in yxpath, ypath formats,
 # as a sparse tensor, or we convert back and forth on every transform
 # TODO conversions of rotated boxes to pos_pos, and pos_offset
 def transform_target(target: Union[Tensor, list, tuple],
