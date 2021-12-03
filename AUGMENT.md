@@ -45,12 +45,17 @@ All transforms, other than 'IO' and 'Compose' can be randomized. Randomization i
 
 ## Sizing Transforms
 **`__type__ = 'Sizing'`**
+Transforms leveraging nn.interpolate. Dimensions can be expanded per batch or channel. Sizing transforms have no bernoulli probability p and target size is constant, random parameters are related to cropping and transforming only.
 
 ### **SqueezeCrop()**
-Resize transform leveraging nn.interpolate. Dimensions can be expanded per batch or channel. WIP
-
+```python
+  # respectively
+  SC = SqueezeCrop(for_display=True, ratio=0, ratio_b=1, distribution='Normal', size=400,  expand_dims=(0,1))
+  SC = SqueezeCrop(for_display=True, ratio=0, ratio_b=1, distribution='Categorical', size=400,  expand_dims=(0,))
+  SC(item)
+```
 <div align="center">
-  <img width="75%" src= '.github/SqueezeCrop_perchannel.png'>
+  <img width="100%" src= '.github/SqueezeCrop_perchannel.png'>
 </div>
 
 ## Appearance Transforms
@@ -59,20 +64,13 @@ Resize transform leveraging nn.interpolate. Dimensions can be expanded per batch
 ### **Normalize()**
 With alias  `MeanCenter()` standard normalization. Typycally for `x` in dataset `X`, `(x - X.mean())/X.std()`. Arguments `'mean'` and `'std'`  can inherit from class `Values()` i.e be probabilistic. 
 
+***WIP TODO: missing probability of mean and std values***
+
 ### **UnNormalize()**
 Inverse of normalize `x * X.std() + X.mean()`, has alias `UnMeanCenter()`
 
 ### **NormToRange()**
 Feature scaling, by default to 0-1, most common use case `NormToRange(minimum=0, maximum=1)`. `'minimum'` and `'maximum'` can inherit from class `Values()` i.e. be probabilistic.
-
-### **SoftClamp()**
-Piecewise Tanh feature scaling. Min, max fixed at 0,1. Softness of the tanh or inflection point are variables that can inherit from class `Values()`.
-
-<div align="left">
-  <img width="31%" src=".github/SoftClamp.png">
-  <img width="62%" src=".github/NormToRange.png">
-</div>
-
 
 ### **Saturate()**
 One probabilistic argument `'a'`. Changes saturation values, `Saturate(a=0, p=1)` converts to grayscale. `Saturate(a=-1, b=2, distribution='Uniform', p=0.5, p_dims=0, expand_dims=(0,1)) ` outputs random distribution samples between inverse and over saturation over samples and channels, with 50% probability over sample.
@@ -94,6 +92,14 @@ Random Saturate with Gumbel distribution and different expand dims: (0,1,3), (0,
 
 ### **Gamma()**
 Apply gamma `img^(from_gamma/target_gamma)`. One probabilistic argument, target gamma `'a'`, one constant, `from_gamma=2.2 `. 
+
+### **SoftClamp()**
+Piecewise Tanh feature scaling. Min, max fixed at 0,1. Softness of the tanh or inflection point are variables that can inherit from class `Values()`.
+
+<div align="center">
+  <img width="25%" src=".github/SoftClamp.png">
+  <img width="50%" src=".github/NormToRange.png">
+</div>
 
 ## Affine Transforms
 
