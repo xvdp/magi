@@ -515,32 +515,34 @@ def np_are_concatenatable(data: list, index=0) -> bool:
     return _are_ndarray(data) and _shape_eq(data, index)
 
 
-def merge_items(items: Union[list, tuple], axis=0) -> Item:
+def merge_items(items: Union[list, tuple],
+                merge_kind: Union[str, tuple] = ('data_1d', 'data_2d', 'data_3d'),
+                axis: int = 0,) -> Item:
     """ merges similar Items
-    ndarrays and tensors are merged on axis 0 if equal sizes
-
-    TODO : should positions be stacked? 10 images could be 1,1,2,2 and in next batch, one 1,3,2,2
-        Should indices be stackd or concatenated
-        Should all elements include N?
-        Should Item contain a handler or how elemnts need to be combined merge = [concat, stack, stack]
-        or einsum like subscripts = ['NCHW', 'NMyxhw', 'NMyx...''Ni'
-
-        bboxes: NMyxhw ? NMPO, P: position O: Offset  or NMIO nd NMJO,
-        or NMP(ij)O(ij) and NMP(ij)P(ij)
-        or NMIP(ij) where I woudl be number of coordinates
-
+    ndarrays and tensors are merged on axis 0 if equal sizes and of data_ kind
+    Args
+        items       list | tuple of items
+        merge_kind  str | tuple of .kind to attempt merge
+        axis        int [0] merge over axis
     """
     assert all(items[0].keys == it.keys for it in items), "found items with different sets of keys"
     assert all(len(items[0]) == len(it) for it in items), "found items with different lengths"
-
     data = []
-    for i in range(len(items[0])): # for each element
-        element = [items[j][i] for j in range(len(items))]
 
-        if tensors_are_concatenatable(element):
+    # for each element
+    for i in range(len(items[0])):
+        # merge lists
+        if all(isinstance(items[j][i], (tuple, list))  for j in range(len(items))):
+            element = []
+            for j in range(len(items)):
+                element += list(items[j][i])
+        else:
+            element = [items[j][i] for j in range(len(items))]
+
+        # merge tensors
+        if items[0].kind[i] in merge_kind and tensors_are_concatenatable(element):
             element = torch.cat(element, axis=axis)
         data.append(element)
-
     return Item(data, **items[0].__dict__)
 
 

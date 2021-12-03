@@ -10,19 +10,17 @@ from typing import Union, Optional
 import inspect
 from inspect import getfullargspec, signature
 import numpy as np
-from numpy.core import shape_base
 import torch
 import torch.distributions as tdist
 from koreto import Col
 
-from magi.utils.torch_util import broadcast_tensors, get_broadcastable, to_tensor, squeeze_trailing
+from magi.utils.torch_util import broadcast_tensors, to_tensor, squeeze_trailing
 
 from ..utils import torch_dtype, torch_device
 
 
 # pylint: disable=no-member
 _tensorish = (int, float, list, tuple, np.ndarray, torch.Tensor)
-_Tensorish = Union[_tensorish]
 _Dtype = Union[None, str, torch.dtype]
 _Device = Union[str, torch.device]
 
@@ -98,25 +96,42 @@ class Distribution:
         else:
             batch_mask = torch.as_tensor([int(i in dims) for i  in range(max(dims)+1)])
         _squeeze_front = [i+1 for i in range(len(_batch_shape)) if _batch_shape[i] > 1]
-
-        if _squeeze_front:
+    
+        if _squeeze_front and self.__ is not None:
             batch_mask = batch_mask[:min(_squeeze_front)]
             # batch_mask[min(_squeeze_front):] = 0
 
             _squeeze_front = min(_squeeze_front)
-            # If parameters need squeezing, reinit distribution
-            if self.__ is not None:
-                params = {key:val for key, val in self.__.__dict__.items()
-                          if torch.is_tensor(val) and "_" not in key}
 
-                for key, val in params.items():
-                    if torch.is_tensor(val):
-                        for i in range(_squeeze_front):
-                            params[key] = val.squeeze(0)
-                self.__ = self.__.__class__(**params)
+            params = {key:val for key, val in self.__.__dict__.items()
+                        if torch.is_tensor(val) and "_" not in key}
+
+            for key, val in params.items():
+                if torch.is_tensor(val):
+                    for i in range(_squeeze_front):
+                        params[key] = val.squeeze(0)
+            self.__ = self.__.__class__(**params)
+
+        # print(" batch_mask", batch_mask)
+        # print("_squeeze_front", _squeeze_front)
+
+        # if _squeeze_front:
+        #     batch_mask = batch_mask[:min(_squeeze_front)]
+        #     # batch_mask[min(_squeeze_front):] = 0
+
+        #     _squeeze_front = min(_squeeze_front)
+        #     # If parameters need squeezing, reinit distribution
+        #     if self.__ is not None:
+        #         params = {key:val for key, val in self.__.__dict__.items()
+        #                   if torch.is_tensor(val) and "_" not in key}
+
+        #         for key, val in params.items():
+        #             if torch.is_tensor(val):
+        #                 for i in range(_squeeze_front):
+        #                     params[key] = val.squeeze(0)
+        #         self.__ = self.__.__class__(**params)
 
         self.batch_mask = torch.as_tensor(batch_mask)
-
 
     def __repr__(self, exclude_keys: Union[list, tuple] = ()) -> str:
         """ utility, auto __repr__()
@@ -186,9 +201,14 @@ class Values(Distribution):
     'expand_dims'   (tuple, int [0])    dimensions expanded to requested shape, default batch dim N
         if value args are singletons any dimension is expanded to .sample(shape)
         e.g. a=0, b=1, expand_dims=(0,1,3) .sample(shape=(4,5,12,12)) -> tensor shape (4,5,1,12)
+
+        noe behaviour difference between constant and random smapling, on non constant sampling: 
         return shape is 1 for all trailing dims of non sigletons and non expanded dims
-        e.g. if a=[3,2,1] b=[4,5,6], expand_dims=(0,1,3) 
+        e.g. if a=[3,2,1] b=[4,5,6], expand_dims=(0,1,3)
             .sample(shape=(4,5,12,12)) -> tensor shape (4,3,1,1)
+        but a = [3,2,1], distribution=None, expand_dims=(0,1,3)
+            .sample(shape=(4,5,12,12)) -> tensor shape (4,3,1,12)
+
 
     'clamp'     (tuple [None]) min max tuple to distribution values
     'center'    (bool [True]) centrs 'Normal', 'Laplace', 'Gumbel' if args passed as 'a', 'b'
@@ -347,8 +367,13 @@ class Values(Distribution):
         shape = (shape,) if isinstance(shape, int) else shape
         size = len(self.batch_mask[:len(shape)])
         # sample shape: mask of input shape size
+
+        # print(" batch_mask", self.batch_mask)
+        # print(" shape", shape)
+        # print(" size", size)
         sample_shape = torch.maximum(torch.as_tensor(shape[:size]) * self.batch_mask[:size],
                                      torch.ones(1)).to(dtype=torch.int)
+        # print(" sample_shape", sample_shape)
 
         if self.__ is None:
             out = self.vals
@@ -356,7 +381,7 @@ class Values(Distribution):
                 sample_shape = sample_shape.tolist() + list(self.vals.shape)[len(sample_shape):]
             elif len(shape) > out.ndim:
                 out = out.view(*out.shape, *[1]*(len(shape) - out.ndim))
-            print(sample_shape, out.shape)
+
             for i, s in enumerate(sample_shape):
                 if out.shape[i] > 1 and s > 1 and s != out.shape[i]:
                     out = out.mean(axis=i, keepdims=True)
@@ -371,6 +396,11 @@ class Values(Distribution):
         if len(out.shape) < len(shape):
             out = out.view(*out.shape, *[1] * (len(shape) - len(out.shape)))
         # print("out shape", out.shape)
+
+        # if out width is neither 1 nor shape requested, reduce
+        for i, o in enumerate(out.shape):
+            if i < len(shape) and shape[i] > 1 and o > 1 and o != shape[i]:
+                out = out.mean(axis=i, keepdim=True)
 
         if self.clamp is not None:
             out = torch.clamp(out, *self.clamp)

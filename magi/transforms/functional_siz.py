@@ -6,7 +6,8 @@ import torch
 from torch import nn
 from koreto import Col
 from .functional_base import transform, transform_profile, get_sample_like, Tensorish, TensorItem
-from ..utils import get_mgrid, slicer
+from ..utils import get_mgrid, slicer, crop_targets, transform_target
+from ..utils import ij__ji_mode, pos_offset__pos_pos_mode, pos_pos__pos_offset_mode
 
 # pylint: disable=no-member
 ###
@@ -21,20 +22,144 @@ def squeeze_crop(data: TensorItem,
                  for_display: bool = False,
                  profile: bool = False) -> TensorItem:
 
-    crop_start, crop_size = get_crop_info(data, ratio)
+    # expand crop sizes to batch, and expand dims 0, 1 if
+    # sample ratios
+    crop_start, crop_end = _get_crop_info(data, ratio)
+    size = _parse_size_arg(data[0].shape, size)
 
     _transform = transform_profile if profile else transform
     data = _transform(data=data, func=squeeze_crop_tensor, for_display=for_display,
-                      kind_keys=['data_2d'], crop_start=crop_start, crop_size=crop_size,
+                      kind_keys=['data_2d'], crop_start=crop_start, crop_end=crop_end,
                       target_size=size, interpolation=interpolation, align_corners=align_corners)
 
-    # data = _transform(data=data, func=squeeze_crop_targets, for_display=False,
-    #                   kind_keys=['pos_2d'], size=size, start=start, crop_size=crop_size,
-    #                   interpolation=interpolation)
+    if data.get_indices(kind='pos_2d'):
+        data = _transform(data=data, func=squeeze_crop_targets, for_display=False,
+                        kind_keys=['pos_2d'], crop_start=crop_start, crop_end=crop_end,
+                        target_size=size)
     return data
 
-def get_crop_info(x: TensorItem, ratio: Tensorish) -> tuple:
-    """ returns crop start and size as in shape(*x.shape, 2)
+
+def squeeze_crop_tensor(x: torch.Tensor,
+                        crop_start: torch.Tensor,
+                        crop_end: torch.Tensor,
+                        target_size: Union[int, tuple, None] = None,
+                        interpolation: str = 'linear',
+                        align_corners: bool = True,
+                        mode: str = 'NCHW') -> torch.Tensor:
+    """
+    Args
+        x           tensor
+        crop_start  (tensor) shape N,C,1,1,2 # where N and C are 1 dim is not expanded
+        crop_end    (tensor) same shape as crop_start
+    """
+    expand_dims = [i for i in range(len(crop_start.shape[:-1])) if crop_start.shape[i] > 1]
+    if expand_dims:
+        _msg = f"{Col.YB}Sizing transforms only allow expanding dims 0 | 1{expand_dims}{Col.AU}"
+        assert max(expand_dims) <= 1, _msg
+
+    dims = [crop_start.shape[i] for i in expand_dims]
+    crop_start = crop_start.view(-1, 2)
+    crop_end = crop_end.view(-1, 2)
+
+    assert crop_start.shape == crop_end.shape, f"mismatch dims crop {crop_end.ndim} and start {crop_start.ndim} "
+    target_size = _parse_size_arg(x.shape, target_size)
+
+    # single crop and resize
+    if not expand_dims:
+        return resize_tensor(x[:, :, crop_start[0, 0]:crop_end[0, 0],
+                               crop_start[0, 1]:crop_end[0, 1]],
+                             target_size, interpolation, align_corners)
+
+    # stack multpile crops into tensor slices
+    # get_mgrid + slicer returns available permutations and slices tensor, batch, channel
+    out = torch.zeros(*x.shape[:2], *target_size, dtype=x.dtype, device=x.device)
+    indices = get_mgrid(dims, indices=True)
+    for i, index in enumerate(indices):
+        _nc = slicer(x.shape, expand_dims, index)
+        out[_nc] = resize_tensor(x[_nc][:, :, crop_start[i, 0]:crop_end[i, 0],
+                                        crop_start[i, 1]:crop_end[i, 1]],
+                                 target_size, interpolation, align_corners)
+    return out
+
+
+
+def squeeze_crop_targets(x: Union[torch.Tensor, list, tuple],
+                        crop_start: torch.Tensor,
+                        crop_end: torch.Tensor,
+                        target_size: Union[int, tuple, None] = None,
+                        mode: str = 'yxyx') -> torch.Tensor:
+    """
+    Args
+        x           tensor # targets, expeced in xpath mode
+        crop_start  (tensor) shape N,C,1,1,2 # where N and C are 1 dim is not expanded
+        crop_size   (tensor) same shapea as crop_start
+    """
+    # 
+    # convert to positionts 'y' to match tensor
+    _mode = mode
+    if mode[0] == 'x':
+        x, _mode = ij__ji_mode(x, mode)
+    if 'w' in mode:
+        x, _mode = pos_offset__pos_pos_mode(x, _mode)
+
+
+    # TODO cleanup broadcasting; this is a mess
+    # resolve scales
+    target_size = torch.as_tensor(target_size, dtype=crop_end.dtype)
+    target_size, crop_end = torch.broadcast_tensors(target_size, crop_end)
+    scale = (target_size/(crop_end - crop_start))
+
+    expanded_channels = crop_start.shape[1]
+
+    # propagate
+    if len(crop_start) > 1: # batch_size > 1 and 0 in expand_dims
+        scale = [s.view(-1,2) for s in torch.split(scale, [1]*len(scale), 0)]
+
+    elif len(x) > 1: # batch_size > 1, expand_dims in None, 1
+        crop_start = torch.cat([crop_start]*len(x))
+        crop_end = torch.cat([crop_end]*len(x))
+        scale = [scale.view(-1,2)]*len(x)
+
+    if torch.is_tensor(scale):
+        scale = scale.view(-1,2)
+
+    # crop
+    drop = []
+    for i, _x in enumerate(x):
+        if expanded_channels > 1:
+            _x = torch.cat([x[i]]*expanded_channels)
+        x[i], _drop =  crop_targets(_x, crop_start[i], crop_end[i], _mode)
+        drop.append(_drop)
+
+    # scale
+    if isinstance(scale, (list, tuple)):
+        for i, _ in enumerate(scale):
+            x[i] = transform_target(x[i], scale=scale[i]).view(-1, 1, *x[i].shape[2:])
+            if drop[i]:
+                x[i] = torch.cat([x[i][j] for j in range(len(x[i])) if j not in drop[i] ]) 
+    else:
+        x = transform_target(x, scale=scale).view(-1, 1, *x.shape[2:])
+        if drop:
+            x = torch.cat([x[j] for j in range(len(x)) if j not in drop[i] ]) 
+
+    if mode[0] != _mode[0]:
+        x, _mode = ij__ji_mode(x, _mode)
+    if mode != _mode and 'w' in mode:
+        x, _mode = pos_pos__pos_offset_mode(x, _mode)
+    assert _mode == mode, f"failed to convert to original mode"
+
+    return x
+
+def log_tensor(x, indent="", msg=""):
+    if torch.is_tensor(x):
+        print(f"{indent}{msg}{tuple(x.shape)}")
+    else:
+        print(f"{indent}{msg}: list, len: {len(x)}")
+        for e in x:
+            log_tensor(e, indent+" ")
+
+def _get_crop_info(x: TensorItem, ratio: Tensorish) -> tuple:
+    """ returns crop start and end as in shape(*x.shape, 2)
 
     expand_dims=None            torch.Size([1, 1, 1, 1, 2]) torch.Size([1, 1, 1, 1, 2])
     expand_dims=0               torch.Size([2, 1, 1, 1, 2]) torch.Size([2, 1, 1, 1, 2])
@@ -45,16 +170,18 @@ def get_crop_info(x: TensorItem, ratio: Tensorish) -> tuple:
     expand_dims=(0, 1, 2, 3)    torch.Size([2, 3, 582, 1024, 2]) torch.Size([2, 3, 582, 1024, 2])
     # expand_dims = [i for i in range(len(start.shape[:-1])) if start.shape[i] > 1]
     """
+    # get tensor from item
     x = x if torch.is_tensor(x) else x[0]
+    # random sampler sampler
     ratio = get_sample_like(ratio, like=x).unsqueeze(-1)
     img_size = torch.tensor(x.shape[2:]).long().unsqueeze(0) # H, W
     anisotropy = torch.sub(*x.shape[2:]) # H - W
     start = torch.clamp(torch.tensor([anisotropy, -anisotropy]),
                         0, img_size.max()).mul(ratio/2.).long()
-    size = img_size.sub(start)
-    return start, size
+    end = img_size.sub(start)
+    return start, end
 
-def resolve_size(input_shape: tuple, target_size: Union[int, tuple, None] = None) -> tuple:
+def _parse_size_arg(input_shape: tuple, target_size: Union[int, tuple, None] = None) -> tuple:
     """ Returns a tuple of same dims as input_shape[2:], ie, HW, HWD etc.
     Args
         input_shape     shape of tensor NC...
@@ -87,7 +214,7 @@ def resize_tensor(x: torch.Tensor,
                   interpolation: str = 'linear',
                   align_corners: bool = True) -> torch.Tensor:
     """ Resizes tensor """
-    size = resolve_size(x.shape, size)
+    size = _parse_size_arg(x.shape, size)
     if x.shape[2:] == size:
         return x
 
@@ -95,48 +222,5 @@ def resize_tensor(x: torch.Tensor,
     return nn.functional.interpolate(x, size=size, mode=interpolation,
                                      align_corners=align_corners).clamp(x.min(), x.max())
 
-
-def squeeze_crop_tensor(x: torch.Tensor,
-                        crop_start: torch.Tensor,
-                        crop_size: torch.Tensor,
-                        target_size: Union[int, tuple, None] = None,
-                        interpolation: str = 'linear',
-                        align_corners: bool = True) -> torch.Tensor:
-    """
-    Args
-        x           tensor
-        crop_start  (tensor) shape N,C,1,1,2 # where N and C are 1 dim is not expanded
-        crop_size   (tensor) same shapea as crop_start
-
-    """
-    expand_dims = [i for i in range(len(crop_start.shape[:-1])) if crop_start.shape[i] > 1]
-    if expand_dims:
-        _msg = f"{Col.YB}Sizing transforms only allow expanding dims 0 | 1{expand_dims}{Col.AU}"
-        assert max(expand_dims) <= 1, _msg
-
-        # TODO collapse expanded dims if all are equal
-
-    dims = [crop_start.shape[i] for i in expand_dims]
-    crop_start = crop_start.view(-1, 2)
-    crop_size = crop_size.view(-1, 2)
-
-    assert crop_start.shape == crop_size.shape, f"mismatch dims crop {crop_size.ndim} and start {crop_start.ndim} "
-    target_size = resolve_size(x.shape, target_size)
-
-    # single crop and resize
-    if not expand_dims:
-        return resize_tensor(x[:, :, crop_start[0,0]:crop_size[0, 0],
-                               crop_start[0, 1]:crop_size[0, 1]],
-                             target_size, interpolation, align_corners)
-
-    out = torch.zeros(*x.shape[:2], *target_size, dtype=x.dtype, device=x.device)
-
-    indices = get_mgrid(dims, indices=True)
-    for i, index in enumerate(indices):
-        nc = slicer(x.shape, expand_dims, index)
-        out[nc] = resize_tensor(x[nc][:, :, crop_start[i, 0]:crop_size[i, 0],
-                                      crop_start[i, 1]:crop_size[i, 1]],
-                                target_size, interpolation, align_corners)
-    return out
 
 # def crop_targets()

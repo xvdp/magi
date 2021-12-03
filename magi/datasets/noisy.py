@@ -1,6 +1,6 @@
 """@xvdp """
 import inspect
-from typing import Union
+from typing import Union, Optional
 import torch
 from torch.utils.data.dataset import Dataset
 from ..features import Item
@@ -15,10 +15,17 @@ class Noise(Dataset):
         normal, uniform, deterministic noise
         TODO multi scale noise, brown,
     """
-    def __init__(self, noise_type: Union[str, list, tuple]="normal", channels: int=3,
-                 size: Union[list, tuple]=(256,256), classes: int=1000, dataset_size: int=128000,
-                 dtype: Union[str, torch.dtype]=None, device: Union[str, torch.device]="cpu",
-                 seed: int=0, for_display: bool=False, grad: bool=False):
+    def __init__(self,
+                 noise_type: Union[str, list, tuple] = "normal",
+                 channels: int = 3,
+                 size: Union[list, tuple] = (256,256),
+                 classes: int = 1000,
+                 dataset_size: int = 128000,
+                 dtype: Union[None, str, torch.dtype] = None,
+                 device: Union[str, torch.device] = "cpu",
+                 seed: Optional[int] = None,
+                 for_display: bool = False,
+                 grad: bool = False):
         """
         Args
             noise_type  (str[normal]) uniform, brownian
@@ -53,7 +60,7 @@ class Noise(Dataset):
         self.dtype = resolve_dtype(dtype)
         self.device = get_valid_device(device)
         self.size = [1, channels, *size]
-        self.seed = seed
+        self.seed = seed if seed is not None else torch.randint(100000, (1,)).item()
 
         self.grad = grad
         warn_grad_cloning(for_display, grad, in_config=True)

@@ -65,7 +65,10 @@ class Transform(object):
         if shortcut[0] in kwargs:
             kwargs[shortcut[1]] = kwargs.pop(kwargs[shortcut[0]])
 
-    def update_kwargs(self, exclude_keys: Union[None, list, tuple] = None, **kwargs) -> tuple:
+    def update_kwargs(self,
+                      exclude_keys: Union[None, list, tuple] = None,
+                      allow_extra: bool = False,
+                      **kwargs) -> tuple:
         """ utility
             __call__(**kwargs) changes transform functional
                 without changing instance attributes
@@ -86,8 +89,11 @@ class Transform(object):
         if 'for_display' in out and out['for_display'] is None:
             out['for_display'] = config.FOR_DISPLAY
 
-        assert not extra_kwargs, f"{Col.YB}{extra_kwargs} can't be passed on __call__() {Col.AU}"
+        if not allow_extra:
+            assert not extra_kwargs, f"{Col.YB}{extra_kwargs} can't be passed on __call__() {Col.AU}"
 
+        else:
+            out.update(extra_kwargs)
         return out
 
     @staticmethod

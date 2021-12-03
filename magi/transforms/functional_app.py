@@ -53,7 +53,8 @@ def normalize(data: TensorItem,
 def normalize_tensor(x: torch.Tensor,
                      mean: Tensorish,
                      std: Tensorish,
-                     p: Tensorish=1) -> torch.Tensor:
+                     p: Tensorish=1,
+                     mode: str = 'NCHW') -> torch.Tensor:
     """
     Args
         x           tensor
@@ -106,7 +107,8 @@ def unnormalize_tensor(x: torch.Tensor,
                        mean: Tensorish,
                        std: Tensorish,
                        clip: bool = False,
-                       p: Tensorish = 1) -> torch.Tensor:
+                       p: Tensorish = 1,
+                       mode: str = 'NCHW') -> torch.Tensor:
     """
     Args
         x           tensor
@@ -170,7 +172,8 @@ def normtorange(data: TensorItem,
 def normtorange_tensor(x: torch.Tensor,
                        minimum: Tensorish,
                        maximum: Tensorish,
-                       p: Tensorish = 1) -> torch.Tensor:
+                       p: Tensorish = 1,
+                       mode: str = 'NCHW') -> torch.Tensor:
     """
     Args
         x           (tensor)
@@ -240,7 +243,10 @@ def saturate(data: TensorItem,
                       kind_keys=['data_1d', 'data_2d', 'data_3d'],
                       sat=sat, p=p)
 
-def saturate_tensor(x: torch.Tensor, sat: torch.Tensor, p: torch.Tensor) -> torch.Tensor:
+def saturate_tensor(x: torch.Tensor,
+                    sat: torch.Tensor,
+                    p: torch.Tensor,
+                    mode: str = 'NCHW') -> torch.Tensor:
     """ if p saturate x to sat*saturation of channels of x
     0: grayscale, 2, oversaturate, -1 flip saturation
     if len p > 1 independently saturate
@@ -298,7 +304,8 @@ def gamma(data: TensorItem,
 
 def gamma_tensor(x: torch.Tensor,
                  values: torch.Tensor, p: torch.Tensor,
-                 from_gamma: Tensorish = 2.2) -> torch.Tensor:
+                 from_gamma: Tensorish = 2.2,
+                 mode: str = 'NCHW') -> torch.Tensor:
     """
     """
     p = get_bernoulli_like(p, like=x)
@@ -349,7 +356,8 @@ def softclamp(data: TensorItem,
 def softclamp_tensor(x: torch.Tensor,
                  soft: Union[float, int],
                  p: torch.Tensor,
-                 inflection: Union[type, Tensorish] = 0.5) -> torch.Tensor:
+                 inflection: Union[type, Tensorish] = 0.5,
+                 mode: str = 'NCHW') -> torch.Tensor:
     """ piecewise tanh clamp
     Args
         x           tensor

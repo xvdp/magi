@@ -29,7 +29,6 @@ from ..utils import warn_grad_cloning, warn_np_dtypes
 
 
 _tensorish = (int, float, list, tuple, np.ndarray, torch.Tensor)
-_Tensorish = Union[_tensorish]
 # pylint: disable=no-member
 #
 # IO Transforms
@@ -183,7 +182,7 @@ class Show(Transform):
         """
         self.update_shortcut(('w', 'width'), kwargs)
         self.update_shortcut(('h', 'height'), kwargs)
-        kw_call = self.update_kwargs(**kwargs)
+        kw_call = self.update_kwargs(allow_extra=True, **kwargs)
         return F.show(data, **kw_call)
 
 ##

@@ -50,8 +50,8 @@ def logtensor(x, msg=""):
     _dtype = f" {x.dtype.__repr__().split('.')[-1]}"
     _min = f" min {sround(x.min().item(), 2)}"
     _max = f" max {sround(x.max().item(), 2)}"
-    _mean = f" mean {sround(x.mean().item(), 2)}"
-    print(f"{msg}{tuple(x.shape)} {_dtype} {x.device.type} grad {x.requires_grad},{_mean},{_min},{_max}")
+    _mean = "" if not x.is_floating_point() else f", mean {sround(x.mean().item(), 2)}"
+    print(f"{msg}{tuple(x.shape)} {_dtype} {x.device.type} grad {x.requires_grad}{_mean},{_min},{_max}")
 
 def logndarray(x, msg=""):
     """ log tensor properties, for debug"""

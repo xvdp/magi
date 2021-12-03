@@ -11,7 +11,7 @@ from . import functional_app as F
 from .. import config
 
 
-__all__ = ["Normalize", "MeanCenter", "UnMeanCenter", "UnNormalize", "NormToRange", "Saturate", "Gamma", "SoftClamp"]
+__all__ = ["Normalize", "UnNormalize", "NormToRange", "Saturate", "Gamma", "SoftClamp"]
 
 # pylint: disable=no-member
 def _as_tensor(values: Tensorish, ndims: int = 4, axis: int = 1) -> torch.Tensor:
@@ -70,9 +70,6 @@ class Normalize(TransformApp):
         kw_call = self.update_kwargs(**kwargs)
         return F.normalize(data, **kw_call)
 
-# alias to normalize
-MeanCenter = Normalize
-
 class UnNormalize(TransformApp):
     """
     UnNormalize a tensor image with mean and standard deviation.
@@ -120,8 +117,6 @@ class UnNormalize(TransformApp):
         """
         kw_call = self.update_kwargs(**kwargs)
         return F.unnormalize(data, **kw_call)
-
-UnMeanCenter = UnNormalize
 
 class NormToRange(TransformApp):
     """Map tensor linearly to a range

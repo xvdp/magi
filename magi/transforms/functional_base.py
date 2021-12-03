@@ -33,6 +33,7 @@ def transform(data: TensorItem,
     Args
         data        Item or tensor
         func        function applied to tensor
+            2 args required: data (tensor), mode (str), units
 
     Args called if data is Item
         for_display bool [False], if True, CLONE
@@ -41,9 +42,11 @@ def transform(data: TensorItem,
     Args to transform function
         **kwargs    function arguments
     """
+    mode = None if not 'mode' in kwargs else kwargs.pop('mode')
+
     # Apply transform to tensor
     if isinstance(data, torch.Tensor):
-        return func(data, **kwargs)
+        return func(data, mode=mode, **kwargs)
 
     # Clone if requested
     if for_display:
@@ -57,7 +60,7 @@ def transform(data: TensorItem,
     indices = data.get_indices(kind=kind_keys)
     assert indices, f"Cannot Transform, missing Item.kind keys in {kind_keys}"
     for i in indices:
-        data[i] = func(data[i], **kwargs)
+        data[i] = func(data[i], mode=data.form[i], **kwargs)
     return data
 
 @memory_profiler

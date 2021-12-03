@@ -35,7 +35,7 @@ def test_categorical():
     assert torch.equal(v.batch_mask, torch.tensor([1]))
     assert v.sample(4).shape == (4,3)
 
-    assert v.sample([4,12,23,32]).shape == (4,3,1,1)
+    assert v.sample([4,12,23,32]).shape == (4,1,1,1)
 
     v = Values(a=0.1, b=20, c=300, d=4000, expand_dims=(0,1,3))
     v.sample().shape == (1,)
@@ -68,7 +68,7 @@ def test_matching():
     sat = Values(**dic)
     assert sat.sample().shape == torch.Size([1, 3])
     assert sat.sample((5,)).shape == torch.Size([5, 3])
-    assert sat.sample((5,4,6,4)).shape ==torch.Size([5, 3, 1, 1])
+    assert sat.sample((5,4,6,4)).shape ==torch.Size([5, 1, 1, 1])
 
     dic = {'a':-1, 'b':0, 'distribution':'Categorical', 'expand_dims':0}
     sat = Values(**dic)
@@ -93,7 +93,7 @@ def test_matching():
     sat = Values(**dic)
     assert sat.sample().shape == torch.Size([1, 3])
     assert sat.sample((5,)).shape == torch.Size([5, 3])
-    assert sat.sample((5,4,6,4)).shape ==torch.Size([5, 3, 1, 1])
+    assert sat.sample((5,3,6,4)).shape ==torch.Size([5, 3, 1, 1])
 
     # TODO: expand beyond width?
     dic = {'a':[-1,2,3], 'b':None, 'distribution':None, 'expand_dims':(0,3)}
@@ -103,14 +103,13 @@ def test_matching():
     # assert sat.sample((5,4,6,4)).shape ==torch.Size([5, 3, 1, 4]) << will fail, should not
 
 
-
 def test_ps():
     pd = {'p':[0.5,0.2,0.1], 'expand_dims':0}
     ps = Probs(**pd)
 
     assert ps.sample().shape == torch.Size([1, 3])
     assert ps.sample((5,)).shape == torch.Size([5, 3])
-    assert ps.sample((5,4,6,4)).shape ==torch.Size([5, 3, 1, 1])
+    assert ps.sample((5,4,6,4)).shape ==torch.Size([5, 1, 1, 1]) ###
 
     pd = {'p':[1], 'expand_dims':0}
     ps = Probs(**pd)

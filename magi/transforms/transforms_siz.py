@@ -1,47 +1,6 @@
 """@xvdp
 Sizing Transforms, output tensor size is changed
 
-
-class Gamma(TransformApp):
-    Changes gamma assumes gamma 2.2
-    To blend betweeen current and linear
-    Args:
-        a           (float >0  [1.0])   target gamma a
-        b           (float > 0 [None])   target gamma b, if None int between input and a with prob p
-                        b is float > 0, continuous sample distribution
-        p           (float 0-1 [0.1])   bernoulli chance of transform
-        distribution(str  ["Normal"])   in Values
-                        None:       discrete between a and b, (or if b is None, a if p, else None)
-
-    def __init__(self,
-                 p: _Tensorish = 1.0,                           # probability
-                 p_dims: Union[None, int, tuple, list] = 0,     # vary probability over dims
-                 a: _Tensorish = 1.0,                           # target gamma
-                 b: Optional[_Tensorish] = None,                # second target
-                 from_gamma: _Tensorish = 2.2,
-                 distribution: Optional[str] = "Normal",
-                 expand_dims: Union[None, int, tuple, list] = 0,# vary saturation over dims
-                 for_display: Optional[bool] = None,            # clone before appying
-                 **kwargs) -> None:                             # kwargs for transforms.Values()
-
-        super().__init__(for_display=for_display)
-
-        self.value = Values(a=a, b=b, expand_dims=expand_dims, distribution=distribution, **kwargs)
-        self.from_gamma = from_gamma
-        self.p = Probs(p=p, expand_dims=p_dims)
-
-    def __call__(self, data: Union[torch.Tensor, list], **kwargs) -> Union[torch.Tensor, list]:
-         Returns data in range (minimum, maximum)
-        Args:
-            data: tensor or Item or list
-            **kwargs    overwritedes to class
-                value   (float, tensor)
-                p       (float, tensor)
-                for_display (bool [False]) clones data
-                profile     (bool [False]) wraps func in @memory_profile
-        kw_call = self.update_kwargs(**kwargs)
-        return F.gamma(data, **kw_call)
-
 """
 
 from typing import Union, Optional
@@ -57,9 +16,6 @@ from .transforms_rnd import Values
 from . import functional_siz as F
 from .. import config
 
-
-_tensorish = (int, float, list, tuple, np.ndarray, torch.Tensor)
-_Tensorish = Union[_tensorish]
 
 # pylint: disable=no-member
 #####
@@ -80,12 +36,10 @@ def valid_dims(expand_dims, max_dim=1):
 
 class SqueezeCrop(Transform):
     """Crops the given Torch Image and Size
-
     Args:
         size (int, tuple of ints, None): output size of crop
             None: size is min side
             int: crop to square
-
         interploation   (str ['linear']) | 'cubic'
 
         ratio: (float) [0.5]) squeeze to crop ratio
@@ -94,7 +48,7 @@ class SqueezeCrop(Transform):
 
         ratio_b (float [None]) if second ratio passed, squeeze to crop ratio can be prbabilistic
         distribution (str ['Uniform']) | in Values
-        expand_dims (tuple, int [None]), max 1- Sizing Transforms can only expand Batch and channel dim
+        expand_dims (tuple, int [None]), max: 1, Sizing Transforms only expands Batch or channel dim
 
     TODO ratio and ratio_b, a, b, loc= scale= ..
     TODO targets -> annotation strategy for multiple channels
@@ -117,7 +71,8 @@ class SqueezeCrop(Transform):
         ratio_b = ratio_b if ratio_b is None else min(1, max(ratio_b, 0))
 
         expand_dims = valid_dims(expand_dims)
-        self.ratio = Values(a=ratio, b=ratio_b, expand_dims=expand_dims, distribution=distribution, **kwargs)
+        self.ratio = Values(a=ratio, b=ratio_b, expand_dims=expand_dims,
+                            distribution=distribution, **kwargs)
         self.interpolation = interpolation
 
     def __call__(self, data: Union[torch.Tensor, list], **kwargs) -> Union[torch.Tensor, list]:

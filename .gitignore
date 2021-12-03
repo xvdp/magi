@@ -4,3 +4,4 @@ magi.egg-info/
 sandbox/
 __pycache__/
 magi_test_data/
+.vscode/

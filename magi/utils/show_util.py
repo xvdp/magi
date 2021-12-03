@@ -11,7 +11,7 @@ import torch
 from koreto import Col
 # from .np_util import np_validate_dtype#, to_xywh
 from .imageio import increment_name
-from .target2d_utils import ij__ji, target_mode_str
+from .target2d_utils import ij__ji_mode, pos_pos__pos_offset_mode, target_mode_str
 from .. import config
 
 # pylint: disable = no-member
@@ -41,8 +41,9 @@ def show_tensor(x: Union[np.ndarray, torch.Tensor],
         suptitle    str
         title       str
         adjust      dict, matplotlib adjust params
-        ticks       unfinished, 
-
+        # ticks       unfinished
+    TODO allow multiple types of target
+    TODO pass color and annotation per target
     """
 
     if isinstance(x, torch.Tensor):
@@ -66,15 +67,15 @@ def show_tensor(x: Union[np.ndarray, torch.Tensor],
         plt.title(kwargs['title'])
 
     if targets is not None:
-        colors = ['yellow', 'red', 'orange', 'black', 'gray', 'white', 'blue', 'green']
+        # colors = ['yellow', 'red', 'orange', 'black', 'gray', 'white', 'blue', 'green']
+        # colors[i%len(colors)]
+        color = 'yellow'
         if not isinstance(targets, (list, tuple)):
             targets = [targets]
         if not isinstance(target_mode, (list, tuple)):
             target_mode = [target_mode]*len(targets)
-        # print("\ndrawing targets")
         for i, target in enumerate(targets):
-            # print(f" target {i}, type {type(target)}, mode {target_mode[i]}")
-            draw_boxes(target, target_mode[i], color=colors[i%len(colors)])
+            draw_boxes(target, target_mode[i], color=color)
             # TODO add  annot, labels, color, lwidth)
 
     plt.imshow(x, cmap='gray' if 'cmap' not in kwargs else kwargs['cmap'])
@@ -120,7 +121,14 @@ def to_numpy_grid(x: torch.Tensor,
         m = n*c
         if ncols is None and n == 1:
             ncols = 1 if w > h else 3
-    elif c not in (1,3):
+        
+        # propagate targets over channels
+        if targets is not None:
+            if isinstance(targets, (list, tuple)):
+                targets = list(targets)*c
+            else:
+                targets = [targets]*c
+    elif c not in (1, 3):
         x = torch.cat(x.split(c//3, dim=1))
         m = n*c//3
 
@@ -131,30 +139,38 @@ def to_numpy_grid(x: torch.Tensor,
     if ncols in (0, None):
         nrows, ncols = closest_square(m)
     else:
+        ncols = min(ncols, m)
         nrows = m//ncols + int(bool(m%ncols))
 
     nrows = m//ncols + int(bool(m%ncols))
     img = np.ones((nrows*(h + pad) - pad, ncols*(w + pad) - pad, c)).astype(x.dtype) * background
 
-    out_targets = []
-    if isinstance(mode, str):
-        mode = [mode]*len(x)
+    positions = []
     for i, _x in enumerate(x):
         posx = i%ncols*(w + pad)
         posy = i//ncols*(h + pad)
         img[posy:posy+h, posx:posx+w, :] = _x
-        j = i//(m//n)
 
-        # TODO clean up / test
-        if isinstance(targets, (list, tuple, torch.Tensor)) and len(targets) > i:
+        positions.append(torch.tensor([posy, posx]))
 
-            translate = torch.tensor([posy,posx])
-            _mode = mode[min(i, len(mode)-1)]
-            out_targets += [squeeze_target(targets[i], _mode, False)]
-            out_targets[i] = translate_target(out_targets[i], translate, mode=_mode, to_numpy=True)
+    np_targets = numpy_grid_targets(targets, mode, positions)
 
-    return img, out_targets
+    return img, np_targets
 
+def numpy_grid_targets(targets, modes, positions):
+    """ Shift targets by positions"""
+    out = []
+    if targets is not None:
+        if isinstance(modes, str):
+            modes = [modes]*len(positions)
+
+        for i, pos in enumerate(positions):
+            if i >= len(targets):
+                break
+            out += [translate_target(squeeze_target(targets[i], modes[i], False),
+                                     pos, modes[i], to_numpy=True)]
+
+    return out
 
 def draw_boxes(boxes, mode, annot=None, labels=None, color='yellow', lwidth=1):
     """ draw boxes on matplotlib axis28
@@ -189,14 +205,12 @@ def _draw_box_of_mode(box: np.ndarray,
             _draw_box_of_mode(b, mode, color, lwidth)
     else:
         if mode[0] == 'y':
-            box = ij__ji(box)
-            mode = 'x' + mode[1:]
-            if mode[1:] in ('xhw', 'xyx'):
-                mode = 'xy' + mode[2:][::-1]
+            box, mode = ij__ji_mode(box, mode)
+        if mode == 'xyxy':
+            box, mode = pos_pos__pos_offset_mode(box, mode)
 
         if mode == 'xywh':
             target = Rectangle(box[0], *box[1], edgecolor=color, linewidth=lwidth, facecolor='none')
-
         elif mode in ('xywha', 'yxhwa'):
             target = Ellipse(box[:2], box[2]*2, box[3]*2, angle=box[4]*-180/np.pi, edgecolor=color,
                              linewidth=lwidth, facecolor='none')
@@ -237,15 +251,16 @@ def squeeze_target(target, mode="xywh", to_numpy=True):
         target = []
     return target
 
-def translate_target(target, translation, mode="xywh", sign=1, to_numpy=False):
+def translate_target(target, translation, mode="xywh", to_numpy=False, sign=1):
     """adds or subtracts from target
+    TODO replace this for matrix transform
     """
     
     if isinstance(target, (list, tuple)):
         mode = mode if isinstance(mode, (list, tuple)) else [mode]*len(target)
         out  = []
         for i in range(len(target)):
-            out.append(translate_target(target[i], translation, mode[i], sign, to_numpy))
+            out.append(translate_target(target[i], translation, mode[i], to_numpy, sign))
         return out
 
     if torch.is_tensor(target):
