@@ -43,6 +43,16 @@ All transforms, other than 'IO' and 'Compose' can be randomized. Randomization i
 * `p: int, float tensor`   Bernoulli probability
 * `p_dims` redirects to expand_dims 
 
+## Sizing Transforms
+**`__type__ = 'Sizing'`**
+
+### **SqueezeCrop()**
+Resize transform leveraging nn.interpolate. Dimensions can be expanded per batch or channel. WIP
+
+<div align="center">
+  <img width="75%" src= '.github/SqueezeCrop_perchannel.png'>
+</div>
+
 ## Appearance Transforms
 **`__type__ = 'Appearance'`**
 
@@ -84,14 +94,6 @@ Random Saturate with Gumbel distribution and different expand dims: (0,1,3), (0,
 
 ### **Gamma()**
 Apply gamma `img^(from_gamma/target_gamma)`. One probabilistic argument, target gamma `'a'`, one constant, `from_gamma=2.2 `. 
-
-## Sizing Transforms
-### **SqueezeCrop()**
-Resize transform leveraging nn.interpolate. Dimensions can be expanded per batch or channel. WIP
-
-<div align="center">
-  <img width="100%" src= '.github/SqueezeCrop_perchannel.png'>
-</div>
 
 ## Affine Transforms
 
