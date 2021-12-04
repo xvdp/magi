@@ -11,15 +11,18 @@ Functionals
     unnormalize()
     normtorange()
     saturate()
+    gamma()
 
+TODO could be further simplified:
+    - normalize and unnormalize are nearly indentical
+    - func, func_tensor, func_proc
 """
 from typing import Union, Optional
 import torch
 
 from ..utils import to_saturation, get_broadcastable, broadcast_tensors, tensor_apply_vals
 from .functional_base import transform, transform_profile, Tensorish, TensorItem
-from .functional_base import p_none, get_sample_like, get_bernoulli_like
-
+from .functional_base import p_none, p_all, get_sample_like, get_bernoulli_like
 
 # pylint: disable=no-member
 
@@ -68,11 +71,10 @@ def normalize_tensor(x: torch.Tensor,
     mean = get_sample_like(mean, like=x)
     std = get_sample_like(std, like=x)
 
-    if p.sum() == torch.prod(torch.as_tensor(p.shape)):
+    if p_all(p):
         return normalize_proc(x, mean, std)
 
     return torch.lerp(x, normalize_proc(x, mean, std, inplace=False), p)
-
 
 def normalize_proc(x: torch.Tensor,
                    mean: torch.Tensor,
@@ -81,7 +83,6 @@ def normalize_proc(x: torch.Tensor,
     if x.requires_grad or not inplace:
         return x.sub(mean).div(std)
     return x.sub_(mean).div_(std)
-
 
 ###
 #
@@ -122,7 +123,7 @@ def unnormalize_tensor(x: torch.Tensor,
     mean = get_sample_like(mean, like=x)
     std = get_sample_like(std, like=x)
 
-    if p.sum() == torch.prod(torch.as_tensor(p.shape)):
+    if p_all(p):
         return unnormalize_tensor_proc(x, mean, std, clip)
 
     return torch.lerp(x, unnormalize_tensor_proc(x, mean, std, clip, inplace=False), p)
@@ -190,7 +191,7 @@ def normtorange_tensor(x: torch.Tensor,
     minimum = get_sample_like(minimum, like=x)
     maximum = get_sample_like(maximum, like=x)
 
-    if p.sum() == torch.prod(torch.as_tensor(p.shape)):
+    if p_all(p):
         return normtorange_proc(x, minimum, maximum)
 
     return torch.lerp(x, normtorange_proc(x, minimum, maximum, inplace=False), p)
@@ -254,6 +255,11 @@ def saturate_tensor(x: torch.Tensor,
         x   tensor shape NC...
         sat tensor shape 1 | N | NC
         p   tensor shape 1 | N
+    # TODO profile if lerp, loop or multiprocess
+        for i, _p in enumerate(p):
+            if p_all(_p):
+                x[i:i+1] = to_saturation(x[i:i+1], sat[i:i+1])
+        return x
     """
     p = get_bernoulli_like(p, like=x)
 
@@ -262,17 +268,10 @@ def saturate_tensor(x: torch.Tensor,
 
     sat = get_sample_like(sat, like=x)
 
-    if p.sum() == torch.prod(torch.as_tensor(p.shape)):
+    if p_all(p):
         return to_saturation(x, sat)
 
     return torch.lerp(x, to_saturation(x, sat), p)
-
-    # # TODO profile if lerp, loop or multiprocess
-    # for i, _p in enumerate(p):
-    #     if p_all(_p):
-    
-    #         x[i:i+1] = to_saturation(x[i:i+1], sat[i:i+1])
-    # return x
 
 ###
 #
@@ -306,8 +305,7 @@ def gamma_tensor(x: torch.Tensor,
                  values: torch.Tensor, p: torch.Tensor,
                  from_gamma: Tensorish = 2.2,
                  mode: str = 'NCHW') -> torch.Tensor:
-    """
-    """
+    """ lerp(x, x**(2.2/values)m p) """
     p = get_bernoulli_like(p, like=x)
 
     if p_none(p):
@@ -316,13 +314,13 @@ def gamma_tensor(x: torch.Tensor,
     values = get_sample_like(values, like=x)
     from_gamma = get_broadcastable(from_gamma, other=x, axis=1)
 
-    if p.sum() == torch.prod(torch.as_tensor(p.shape)):
+    if p_all(p):
         return gamma_proc(x, values, from_gamma=from_gamma)
 
     return torch.lerp(x, gamma_proc(x, values, from_gamma=2.2, inplace=False), p)
 
 def gamma_proc(x, values=1.0, from_gamma=2.2, inplace: Optional[bool] = None):
-
+    """ x**(2.2/values) """
     if x.requires_grad or not inplace:
         return x.pow(from_gamma/values)
     return x.pow_(from_gamma/values)
@@ -372,7 +370,7 @@ def softclamp_tensor(x: torch.Tensor,
     soft = get_sample_like(soft, like=x)
     inflection = get_sample_like(inflection, like=x)
 
-    if p.sum() == torch.prod(torch.as_tensor(p.shape)):
+    if p_all(p):
         return softclamp_proc(x, soft, inflection)
 
     return torch.lerp(x, softclamp_proc(x, soft, inflection), p)
@@ -393,7 +391,6 @@ def softclamp_proc(x: torch.Tensor, soft: Optional[torch.Tensor], inflection: to
     if not torch.all(soft == 1):
         numax = torch.lerp(x_max, 1 + soft*x_max - soft, (x_max > 1).to(dtype=x_max.dtype))
         numin = torch.lerp(x_min, soft*x_min, (x_min < 0).to(dtype=x_max.dtype))
-
 
         delta = x_max.sub(x_min)
         nudelta = numax - numin

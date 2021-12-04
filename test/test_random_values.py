@@ -1,6 +1,9 @@
+"""@xvdp
+test for randomization samlers
+"""
 from magi.transforms import Values, Probs
+from magi.transforms.functional_base import p_all, p_none, p_some
 import torch
-
 
 # pylint: disable=no-member
 torch.set_default_dtype(torch.float32) # reset float16 if set by previous test
@@ -135,3 +138,21 @@ def test_fill_missing_args():
     p = Probs() # default returns constant
     p.sample()
     assert p.vals is not None and p.__ is None
+
+
+def test_p():
+    # test that gradients cuda nad dtype dont break ptests
+    o = torch.ones([1,3,13,17], dtype=torch.float16, device="cuda")
+    o.requires_grad = True
+
+    assert p_all(o)
+
+    o = torch.ones([1,3,13,17], dtype=torch.float16, device="cuda")
+    o[-1,-1,-1,-1] = 0
+    o.requires_grad = True
+
+    assert p_some(o)
+
+    o = o.mul(0.)
+    assert p_none(o)
+

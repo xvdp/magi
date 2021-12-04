@@ -137,10 +137,13 @@ def get_dtype_device_update(x: Union[torch.Tensor, Distribution], like: torch.Te
     return out
 
 def p_all(p: Union[int, float, torch.Tensor]) -> bool:
-    """ True if p is 1, 1.0 or torch.ones()"""
+    """ True if p is 1, 1.0 or torch.ones()
+        not strictly equal, float(1) & int(1) but python returns True
+        .item() fetches from cuda
+    """
     if isinstance(p, (int, float)):
         return p == 1
-    return p.sum().item() == len(p)
+    return p.sum().item() == p.numel()
 
 def p_none(p: Union[int, float, torch.Tensor]) -> bool:
     """ True if p is 0, 0.0 or torch.zeros()"""
@@ -150,4 +153,6 @@ def p_none(p: Union[int, float, torch.Tensor]) -> bool:
 
 def p_some(p: Union[int, float, torch.Tensor]) -> bool:
     """ True if p is tensor with some but not all values == 1."""
-    return not isinstance(p, (float, int)) and len(p) > p.sum().item() > 0
+    if torch.is_tensor(p) and p.numel() > p.sum().item() > 0:
+        return True
+    return False
