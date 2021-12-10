@@ -11,7 +11,6 @@ import inspect
 from inspect import getfullargspec, signature
 import numpy as np
 import torch
-import torch.distributions as tdist
 from koreto import Col
 
 from ..utils import torch_dtype, torch_device, broadcast_tensors, to_tensor, squeeze, assert_in
@@ -21,6 +20,33 @@ _tensorish = (int, float, list, tuple, np.ndarray, torch.Tensor)
 _Dtype = Union[None, str, torch.dtype]
 _Device = Union[str, torch.device]
 
+##
+#
+# extension to torch.distributions
+#
+class LogUniform(torch.distributions.Uniform):
+    """ Thin wrapper of 'Uniform' keeping bounds returning log distribution
+    unsure why RandomResizeCrop() uses similar distribution
+    # TODO: watch 'enumerate_support' abstract class needs to be overriden
+    # TODO: watch 'signature differst from overriden sample'
+    """
+    def __init__(self, low, high, validate_args=None):
+        if torch.is_tensor(low):
+            dtype = low.dtype
+        elif torch.is_tensor(high):
+            dtype = high.dtype
+        else:
+            dtype = torch.get_default_dtype()
+        self.e_low = torch.as_tensor(low, dtype=dtype)
+        self.e_high = torch.as_tensor(high, dtype=dtype)
+        super().__init__(low=torch.log(self.e_low), high=torch.log(self.e_high),
+                         validate_args=validate_args)
+    def sample(self, sample_shape):
+        return torch.exp(super().sample(sample_shape=sample_shape))
+
+_Dist  = {key:val for key, val in torch.distributions.__dict__.items() if isinstance(val, type)
+          and 'Transform' not in key}
+_Dist["LogUniform"] = LogUniform
 
 class Distribution:
     """Base class for managed distributions
@@ -66,14 +92,14 @@ class Distribution:
     def get_batch_mask(self, dims: tuple) -> None:
         """ self.batch_mask is a binary mask to expansion of sample to batch shape
         if distribution is singleton valued (eg, low=0.1, high=0.3) all dims are expanded:
-        eg. dims=(0,1,3) will generate an batch_mask [1,0,1,1] and on data NCHW will return shape (N,C,1,W)
+        eg. dims=(0,1,3) generates batch_mask [1,0,1,1] and on data NCHW returns shape (N,C,1,W)
 
         if distribution args are tensors with a width, eg. shaped (1,34,34) corresponding to C,H,W
         batch_mask will be capped at before the width dimension
-        and leading singletons will be squeezed-> values: (34,34), batch_mask [1,0] (if dims=(0,1,3),)
-        and sampler will return (N,1,34,34)
+        leading singletons will be squeezed-> values: (34,34), batch_mask [1,0] (if dims=(0,1,3),)
+        sampler will return (N,1,34,34)
 
-        values entered to the distribution with shape (1,1,K) will return samples of shape N,C,H,K (if dims=(0,1,2) )
+        values with shape (1,1,K) will return samples of shape N,C,H,K (if dims=(0,1,2) )
         or shape (1,1,1,K) if dims=None)
         """
         dims = (dims,) if isinstance(dims, int) else dims
@@ -92,7 +118,7 @@ class Distribution:
         else:
             batch_mask = torch.as_tensor([int(i in dims) for i  in range(max(dims)+1)])
         _squeeze_front = [i+1 for i in range(len(_batch_shape)) if _batch_shape[i] > 1]
-    
+
         if _squeeze_front and self.__ is not None:
             batch_mask = batch_mask[:min(_squeeze_front)]
             _squeeze_front = min(_squeeze_front)
@@ -131,7 +157,7 @@ class Distribution:
 class Values(Distribution):
     """ Initializes samplers for randomizing augmentation transforms based on torch.distributions.
     Values().sample(shape) -> torch tensor with broadcasting rules that depend on:
-        1. a,b, input values, if any input is wider 1, iit is considered Channels, making smallest sample().ndim = 2
+        1. a,b, inputs wider than 1, are considered channels, returning smallest sample().ndim = 2
         2. expand_dims, dims not specified and dims trailing wider dims are width 1
         3. shape, sample().ndim == min(1, shape) unless (1.) applies
 
@@ -302,13 +328,12 @@ class Values(Distribution):
                 size = len(ch_args)
                 distribution = "Categorical"
             _args['probs'] = self._get_probs((size,), distribution, kwargs)
-            self.__ = torch.distributions.__dict__[distribution](**_args)
+            self.__ = _Dist[distribution](**_args)
             self.vals = squeeze(torch.stack(ch_args), side=-1, min_ndim=0)
 
         # 3. continuous distributions
         else:
             distribution = 'Uniform' if distribution is None else distribution
-            assert self.is_distribution_valid(distribution), f"{Col.YB}'{distribution}' not recognized{Col.AU}"
 
             # only ascii key (a,..) args checked for broadcastability
             _args = self._distribution_kwargs(distribution, kwargs)
@@ -326,28 +351,30 @@ class Values(Distribution):
                 if distribution == "Uniform": # TODO: debug a: CHW b: float - see vistest ERR
                     _args['low'], _args['high'] = self._sort_values(_args['low'], _args['high'])
 
-            self.__ = torch.distributions.__dict__[distribution](**_args)
+            self.__ = _Dist[distribution](**_args)
 
         if self.vals is not None:
             self._keys.append('vals')
         self.get_batch_mask(expand_dims)
 
-    def sample(self, shape: Union[int, tuple] = (1,)) -> torch.Tensor:
+    def sample(self, shape: Union[int, tuple] = (1,), num_samples: int = 1) -> torch.Tensor:
         """ Return distribution sample or value a
             Args
-                shape   (tuple)   sample will output tensor of same ndim
+                shape       (tuple)   sample will output tensor of same ndim
+                num_samples (int [1])
         """
-        shape = (shape,) if isinstance(shape, int) else shape
+        shape = [shape] if isinstance(shape, int) else list(shape)
         size = len(self.batch_mask[:len(shape)])
-        # sample shape: mask of input shape size
 
-        # print(" batch_mask", self.batch_mask)
-        # print(" shape", shape)
-        # print(" size", size)
-        sample_shape = torch.maximum(torch.as_tensor(shape[:size]) * self.batch_mask[:size],
+        _batch_mask = self.batch_mask.clone()
+        if num_samples > 1 and _batch_mask[0] == 0:
+                _batch_mask[0] = 1
+                shape[0] = 1
+        shape[0] *= num_samples
+        sample_shape = torch.maximum(torch.as_tensor(shape[:size]) * _batch_mask[:size],
                                      torch.ones(1)).to(dtype=torch.int)
-        # print(" sample_shape", sample_shape)
 
+        # output constant if no distribution
         if self.__ is None:
             out = self.vals
             if out.ndim > len(sample_shape):
@@ -361,6 +388,7 @@ class Values(Distribution):
                 elif s > 1 and out.shape[i] == 1:
                     out = torch.cat([out]*s, axis=i)
 
+        # categorical and binomial are used as value samplers
         elif self.__.__class__.__name__ in ('Categorical', 'Binomial'):
             out = self.vals[self.__.sample(sample_shape)]
         else:
@@ -368,9 +396,8 @@ class Values(Distribution):
 
         if len(out.shape) < len(shape):
             out = out.view(*out.shape, *[1] * (len(shape) - len(out.shape)))
-        # print("out shape", out.shape)
 
-        # if out width is neither 1 nor shape requested, reduce
+        # if out width is neither 1 nor of shape requested, reduce
         for i, o in enumerate(out.shape):
             if i < len(shape) and shape[i] > 1 and o > 1 and o != shape[i]:
                 out = out.mean(axis=i, keepdim=True)
@@ -417,12 +444,10 @@ class Values(Distribution):
     def _distribution_kwargs(dist: str, kwargs: dict) -> dict:
         """ Return params passed by name and required params: None
         """
-        distros = [key for key,val in tdist.__dict__.items() if isinstance(val, type)
-                   and 'Transform' not in key]
-        assert dist in distros, f"{Col.YB}distribution '{dist}' not in {distros} {Col.AU}"
+        assert dist in _Dist, f"{Col.YB}distribution '{dist}' not in {list(_Dist.keys())} {Col.AU}"
 
         out = {}
-        dist_params = signature(tdist.__dict__[dist]).parameters
+        dist_params = signature(_Dist[dist]).parameters
         # either probs or logits required but both are marked optional in torch.distribution
         _probs = ('probs' in dist_params and ('probs' not in kwargs and 'logits' not in kwargs))
 
@@ -442,24 +467,22 @@ class Values(Distribution):
             if value is None:
                 _args[key] = ch_args.pop(0)
 
-    @staticmethod
-    def is_distribution_valid(distribution: str) -> bool:
-        """ True if distribution in torch.distributions"""
-        _valid =  [key for key,val in tdist.__dict__.items() if isinstance(val, type)
-                   and 'Transform' not in key]
+    # @staticmethod
+    # def is_distribution_valid(distribution: str) -> bool:
+    #     """ True if distribution in torch.distributions"""
+    #     _valid =  [key for key,val in tdist.__dict__.items() if isinstance(val, type)
+    #                and 'Transform' not in key] + ["LogUniform"]
 
-        return distribution in _valid
+    #     return distribution in _valid
 
     @staticmethod
     def has_distribution_kargs(**kwargs) -> int:
         """ Count of arguments belonging to any distribution
         # could fail if one passes df1, df2 but a Uniform distro
         """
-        _D = [key for key,val in tdist.__dict__.items() if isinstance(val, type)
-              and 'Transform' not in key]
         dist_args = []
-        for _d in _D:
-            dist_args += [a for a in getfullargspec(tdist.__dict__[_d]).args
+        for _d in _Dist:
+            dist_args += [a for a in getfullargspec(_Dist[_d]).args
                           if a not in ('self', 'validate_args')]
         return sum([1 for k in kwargs if k in dist_args])
 
@@ -504,16 +527,15 @@ def validate_dims(expand_dims: Union[None, int, tuple, list],
     return expand_dims
 
 
-##
 #
 # Debug
 #
 def print_distributions():
     """ print torch distributions
     """
-    _D = [d for d in tdist.__dict__ if isinstance(tdist.__dict__[d], type) and 'Transform' not in d]
-    for _d in _D:
-        print(f"{_d:35}{[a for a in getfullargspec(tdist.__dict__[_d]).args if a not in 'self']}")
+    # _D = [d for d in tdist.__dict__ if isinstance(tdist.__dict__[d], type) and 'Transform' not in d]
+    for _d in _Dist:
+        print(f"{_d:35}{[a for a in getfullargspec(_Dist[_d]).args if a not in 'self']}")
 
 
 """

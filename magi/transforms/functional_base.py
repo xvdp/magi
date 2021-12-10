@@ -57,6 +57,8 @@ def transform(data: TensorItem,
             data = data.deepclone()
 
     # Apply transform to Item indices
+    # TODO: design problem. single element Item merges annotations as list of annotations,
+    # ie. single element Item positions may be tensor, batch Item, positions will be lists.
     indices = data.get_indices(kind=kind_keys)
     assert indices, f"Cannot Transform, missing Item.kind keys in {kind_keys}"
     for i in indices:
@@ -95,12 +97,13 @@ def get_bernoulli_like(x: Tensorish, like: TensorItem) -> torch.Tensor:
         x = Probs(p=x, expand_dims=0)
     return get_sample_like(x, like=like)
 
-def get_sample_like(x: Tensorish, like: TensorItem) -> torch.Tensor:
+def get_sample_like(x: Tensorish, like: TensorItem, num_samples: int = 1) -> torch.Tensor:
     """ sample from Value, Probs
     if x is tensor of correct dtype and device, acts as a pass thru
     Args
-        x,      torch.Tensor, Values, Probs
-        like    torch.Tensor, item
+        x,          torch.Tensor, Values, Probs
+        like        torch.Tensor, item
+        num_samples (int [1]) extra random samples
     """
     if isinstance(like, list): # list or Item, first element has a tensor in it
         like = like[0]
@@ -124,7 +127,8 @@ def get_sample_like(x: Tensorish, like: TensorItem) -> torch.Tensor:
         _to = get_dtype_device_update(x, like)
         if _to:
             x.to(**_to)
-        return x.sample(like.shape)
+        shape = list(like.shape)
+        return x.sample(shape, num_samples=num_samples)
 
     raise NotImplementedError(f"Expected, tensor or distribution sampler, got {type(x)}")
 

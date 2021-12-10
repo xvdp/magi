@@ -5,8 +5,11 @@ Sizing Transforms, output tensor size is changed
 
 from typing import Union, Optional
 import torch
+from torch import distributions
+
+from magi.transforms.functional_base import TensorItem
 from .transforms_base import Transform
-from .transforms_rnd import Values, validate_dims
+from .transforms_rnd import Probs, Values, LogUniform, validate_dims
 from ..utils import assert_in
 from . import functional_siz as F
 
@@ -47,7 +50,7 @@ class SqueezeCrop(Transform):
         ratio = min(1, max(ratio, 0))
         ratio_b = ratio_b if ratio_b is None else min(1, max(ratio_b, 0))
 
-        expand_dims = validate_dims(expand_dims, allowed=(None,0,1),
+        expand_dims = validate_dims(expand_dims, allowed=(None, 0, 1),
                                     msg="On 'Sizing' Transforms, expand_dims")
         self.ratio = Values(a=ratio, b=ratio_b, expand_dims=expand_dims,
                             distribution=distribution, **kwargs)
@@ -66,51 +69,83 @@ class SqueezeCrop(Transform):
         kw_call = self.update_kwargs(**kwargs)
         return F.squeeze_crop(data, **kw_call)
 
-# class ResizeCrop(Transform):
-#     """
-#     similar to CenterCrop
-#     similar to torchvision.transforms.RandomResizeCrop
-#     Given torch image to validate training. its kind of a silly crop
-#         size            (tuple, int) expected output size of each edge
-#         scale           (tuple) range of size of the origin size cropped
-#         ratio           (tuple) range of aspect ratio of the origin aspect ratio cropped
-#         interpolation   (str ["linear"]) in ['linear' 'cubic']
-#         p               (int [1])   0: no randomness
+class CropResize(Transform):
+    """ Crop then Resize: similar to torchvision.transforms.RandomResizeCrop
+    Statistically equivalent when run on defaults.
+    There are several cockamamie defaults in this "standard transform":
+        Aspect ratio LogUniform
+        Crop size is determined by a random uniform distribution between 0 and random uniform scale
+    The samplers here are set up to allow benchmarking with identical parameters - the default
+    Control cropping randomness a bit more precisely, and expanding dimensions
 
-#     """
-#     __type__ = "Affine"
-#     def __init__(self, size, scale=(0.08, 1.0), ratio=(3./4., 4./3.), interpolation="linear",
-#                  p=1):
-#         if isinstance(size, tuple):
-#             self.size = size
-#         else:
-#             self.size = (size, size)
-#         if (scale[0] > scale[1]) or (ratio[0] > ratio[1]):
-#             warnings.warn("range should be of kind (min, max)")
+    Args
+        size                (tuple, int) output size of image: not probabilisitc
 
-#         self.interpolation = interpolation
-#         self.scale = scale
-#         self.ratio = ratio
-#         self.p = p
+        scale               (int, float , tuple [(0.08, 1.])) area scales for intermediary crop
+            # if int | float: scale is constant
+        scale_distribution  (str ['Uniform'])
 
-#     def __call__(self, data, **kwargs):
-#         """
-#         Args:
-#             data: tuple of
-#                 tensor        (tensor): Image to be scaled, format NCL, NCHW, NCHW
-#                 target_tensor (tensor): annotations, interpolated
-#                 labels
-#             **kwargs, any of the __init__ args can be overridden
-#         Returns:
-#             tensor, target_tensor, labels
-#         """
-#         args, _ = update_kwargs(self, **kwargs)
+        ratio               (tuple, int [(3/4, 4/3)]) aspect ratios w/h of the intermediary crop
+            # if int: ratio is constant
+        ratio_distribution  (str ['LogNormal'])
+            # LogNormal: to match RandomResizeCrop():  low ratio is ~1.75X more likely than high
+            # Im not sure why this was done but to match defaults...
 
-#         return F.resize_crop(data, args["size"], args["scale"], args["ratio"],
-#                              args["interpolation"], args["p"])
+        variance      (float [1.]) 0 - 1 - 0: all batch elements are identical, 1: default
+        interpolation   (str ["linear"]) in ['linear' 'cubic'] # scaling interpolation
+        for_display     (bool [None])
 
-#     def __repr__(self):
-#         return _make_repr(self)
+    """
+    __type__ = "Sizing"
+    def __init__(self,
+                 size: Union[int, tuple, list],
+                 scale: Union[int, float, tuple] = (0.08, 1.0),
+                 scale_distribution: str = "Uniform",
+                 ratio: Union[int, float, tuple, list] = (3./4., 4./3.),
+                 ratio_distribution: str = "LogUniform",
+                 expand_dims: Union[None, int, tuple, list] = (0,),
+                 variance: float = 1,
+                 interpolation: str = "linear",
+                 for_display: Optional[bool] = None,
+                 **kwargs) -> None:
+        super().__init__(for_display=for_display)
+
+        # non probabilistic argument
+        self.size = size if isinstance(size, (tuple, list)) else (size, size)
+
+        # constrain to batch and channel expansion
+        expand_dims = validate_dims(expand_dims, allowed=(None, 0, 1),
+                                    msg="On 'Sizing' Transforms, expand_dims")
+        # crop target area sampler
+        scale = (scale,) if isinstance(scale, (int, float)) else scale
+        self.scale = Values(*scale, expand_dims=expand_dims,
+                            distribution=scale_distribution, **kwargs)
+
+        # aspect ratio sampler
+        ratio = (ratio,) if isinstance(ratio, (int, float)) else ratio
+        self.ratio = Values(*ratio, expand_dims=expand_dims,
+                            distribution=ratio_distribution, **kwargs)
+
+        # offset sampler; updates on data with high=(height-h, width-w)
+        self.i = Values(low=0, high=100, distribution="Uniform")
+        self.j = Values(low=0, high=100, distribution="Uniform")
+        self.variance = variance
+
+        self.interpolation = interpolation
+
+    def __call__(self, data, **kwargs):
+        """
+        Args:
+            data: tuple of
+                tensor        (tensor): Image to be scaled, format NCL, NCHW, NCHW
+                target_tensor (tensor): annotations, interpolated
+                labels
+            **kwargs, any of the __init__ args can be overridden
+        Returns:
+            tensor, target_tensor, labels
+        """
+        kw_call = self.update_kwargs(**kwargs)
+        return F.crop_resize(data, **kw_call)
 
 # class CenterCrop(Transform):
 #     """Crops the given Torch Image at the center.

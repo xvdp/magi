@@ -27,7 +27,7 @@ def build_packages():
     """ setup """
     setup(
         name='magi',
-        version=_set_version("0.0.8"),
+        version=_set_version("0.0.9"),
         author="xvdp",
         url='https://github.com/xvdp/magi',
         license='MIT',
