@@ -46,13 +46,20 @@ All transforms, other than 'IO' and 'Compose' can be randomized. Randomization i
 ## Sizing Transforms
 **`__type__ = 'Sizing'`**
 Transforms leveraging nn.interpolate. Dimensions can be expanded per batch or channel. Sizing transforms have no bernoulli probability p and target size is constant, random parameters are related to cropping and transforming only.
+### **ResizeCrop()**
+With defaults statistically identical to `RandomResizeCrop` from torchvision transforms(LogUniform crop aspect ratio and Uniform crop start and end), extended to include expand_dims(0,1) and variance argument attenuating differences between channel random crops.
+<div align="center">
+  <img width="100%" src= '.github/ResizeCrop.png'>
+</div>
+
 
 ### **SqueezeCrop()**
+Simple version of image resizing.
 ```python
   # respectively
   SC = SqueezeCrop(for_display=True, ratio=0, ratio_b=1, distribution='Normal', size=400,  expand_dims=(0,1))
   SC = SqueezeCrop(for_display=True, ratio=0, ratio_b=1, distribution='Categorical', size=400,  expand_dims=(0,))
-  SC(item)
+  SC(item)C
 ```
 <div align="center">
   <img width="100%" src= '.github/SqueezeCrop_perchannel.png'>
