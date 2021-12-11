@@ -47,7 +47,17 @@ All transforms, other than 'IO' and 'Compose' can be randomized. Randomization i
 **`__type__ = 'Sizing'`**
 Transforms leveraging nn.interpolate. Dimensions can be expanded per batch or channel. Sizing transforms have no bernoulli probability p and target size is constant, random parameters are related to cropping and transforming only.
 ### **ResizeCrop()**
-With defaults statistically identical to `RandomResizeCrop` from torchvision transforms(LogUniform crop aspect ratio and Uniform crop start and end), extended to include expand_dims(0,1) and variance argument attenuating differences between channel random crops.
+With defaults statistically identical to `RandomResizeCrop` from torchvision transforms.
+The parameters of ResizeCrop() are a bit strange--they work to return a large distribution of randomized squished crops, but are not obvious to control. The proportions of the crop are controlled by 3 compunded distributions. Image is first cropped then resized to a target; in its default state this transform is used in most standard benchmarks and trainging algorithms over images.
+
+* `ratio=(3/4,4/3)` with its default values is the initial aspect ratio for for the inital crop. 
+* `ratio_distribution='LogUniform'` Default distribution `magi.transforms.LogUniform`, a thin wrapper over `torch.distributions.Uniform` sampling in log space- resulting in a low ratio is ~1.75X the higher aspect ratio; a bias towards wider support on the original crop, thus images squished in the horizontal dimension returned to the trainer. Only `Uniform` and `LogUniform` supported for this argument. 
+* `scale=(0.08, 1.)` along with `scale_distribution='Uniform'`. ratio and scale are multiplied to return a sampler for the image size. Depending on the input image width some of these distributions will return image sizes larger than the original; to solve this, the canonical transform samples up to 10 ratio and scale distributions more until it finds one that fits, or defaults to a center crop.  
+
+In the default mode, no parameters are exposed to control image start offset, instead it is a uniform distribution on the difference between image and crop size. As the randomization of this transform can be extended to channels, a `variance` argument which if channels are extended applies to channels, otherwise to the batch dimension, ensures controllability of the width of the offset.
+
+***WIP TODO: clip target annotations which fall outside the resulting image*** 
+
 <div align="center">
   <img width="100%" src= '.github/ResizeCrop.png'>
 </div>

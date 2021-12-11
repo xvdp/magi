@@ -154,6 +154,9 @@ def crop_resize_targets(x: Union[torch.Tensor, list, tuple],
             handled internally as list of tensors
         crop_start  (tensor) shape N,C,1,1,2 # where N and C are 1 dim is not expanded
         crop_size   (tensor) same shapea as crop_start
+
+    # TODO: on drop or mul targets, rebuild item index
+    # pass target attributes
     """
     #
     # convert targets to list of tensors
@@ -181,18 +184,41 @@ def crop_resize_targets(x: Union[torch.Tensor, list, tuple],
     crop_start = torch.cat([crop_start]*len(x))
     crop_end = torch.cat([crop_end]*len(x))
 
-    #
+    #dc
     # targets for each batch sample, cropped and scaled independently
     for i, _x in enumerate(x):
+        shape = tuple(x[i].shape)
+        paths = list(range(shape[1]))
+        # print(f"{[i]}: shape {shape}; paths {paths}")
+
         # if channels are transformed independently:
-        if crop_start.shape[1] > 1: 
-            _x = torch.cat([x[i]]*crop_start.shape[1])
+        if crop_start.shape[1] > 1:
+            _x = torch.cat([x[i]] * crop_start.shape[1])
+            paths *= crop_start.shape[1]
+        # print(f" catted {[i]}: {_x.shape}: paths{paths}")
+
         x[i], drop =  crop_targets(_x, crop_start[i], crop_end[i], _mode)
+        # print(f" cropped {[i]}: {x[i].shape}")
 
         x[i] = transform_target(x[i], scale=scale[i]).view(-1, 1, *x[i].shape[2:])
+        # print(f" transformed {[i]}: {x[i].shape}")
+
+        # cull identical paths:
+        for j in range(len(x[i])):
+            if j in drop:
+                continue
+            for k in range(j+1, len(x[i])):
+                if k in drop:
+                    continue
+                if torch.equal(x[i][j], x[i][k]):
+                    drop.append(k)
+
         if drop:
             keep = torch.tensor([i for i in range(len(x[i])) if i not in drop], dtype=torch.int64)
             x[i] = x[i][keep]
+            paths = [paths[i] for i in range(len(paths)) if i not in drop]
+        x[i] = x[i].view(shape[0], -1, *shape[2:])
+        # print(f" drop {drop}: {x[i].shape}: paths:{paths}")
 
     #
     # restore original mode and format of annotations
@@ -217,7 +243,7 @@ def _get_squeeze_crop_dims(x: TensorItem, ratio: Tensorish) -> tuple:
     expand_dims=0               torch.Size([2, 1, 1, 1, 2]) torch.Size([2, 1, 1, 1, 2])
     expand_dims=(0, 1)          torch.Size([2, 3, 1, 1, 2]) torch.Size([2, 3, 1, 1, 2])
     expand_dims=(1,)            torch.Size([1, 3, 1, 1, 2]) torch.Size([1, 3, 1, 1, 2])
-    # expand_dims > 2 would fail 
+    # expand_dims > 2 would fail
     """
     # get tensor from item
     x = x if torch.is_tensor(x) else x[0]
@@ -265,17 +291,6 @@ def _resolve_interpolation_mode(ndim: int, interploation: str) -> str:
 #
 # helpers for crop_resize
 #
-"""
-ratio   torch.Size([10, 1, 1, 1, 1])
-ratio[]  torch.Size([10, 1, 1, 1, 2])
-scale  torch.Size([10, 1, 1, 1, 1])
-end    torch.Size([10, 1, 1, 1, 2])
-size tensor([ 768., 1024.])
-end [[[[[679, 711]]]], [[[[486, 384]]]], [[[[802, 820]]]], [[[[755, 684]]]], [[[[832, 689]]]], [[[[746, 779]]]], [[[[515, 650]]]], [[[[284, 232]]]], [[[[719, 657]]]], [[[[706, 594]]]]]
-
-
-"""
-
 def _get_crop_resize_dims(x: TensorItem,
                           scale_sampler: Tensorish,
                           ratio_sampler: Tensorish,
@@ -314,22 +329,17 @@ def _get_crop_resize_dims(x: TensorItem,
 
     # randomized aspect ratios
     crops = torch.where(some==1)[0][:requested_crops]
-    if len(crops):
-        view = (-1, 2)
-        low_var = 0
-        if shape[1] > 1: # if channels are expanded apply variance lerping only to channels
-            view = (-1, shape[1], 2)
-            low_var = (slice(0,None), slice(0,1), slice(0,None))
+    low_var = None
 
-        crop_end = crop_end.view(-1,2)[crops].view(view)
-        crop_end = torch.lerp(crop_end[low_var], crop_end, variance).view(-1,2)
+    if len(crops):
+
+        crop_end = crop_end.view(-1,2)[crops]
 
         i_sampler.__.high = size[0] - crop_end[:, 0]
         j_sampler.__.high = size[1] - crop_end[:, 1]
-        crop_start = torch.round(torch.stack((i_sampler.sample(requested_crops),
-                                              j_sampler.sample(requested_crops)),
-                                              axis=-1)).view(view)
-        crop_start = torch.lerp(crop_start[low_var], crop_start, variance).view(-1,2)
+        crop_start = torch.round(torch.stack((i_sampler.sample(len(crops)),
+                                              j_sampler.sample(len(crops))),
+                                              axis=-1)).view(-1,2)
 
     # center crops: if not sufficient random samples filled
     if requested_crops > len(crops) :
@@ -362,6 +372,20 @@ def _get_crop_resize_dims(x: TensorItem,
             shuffle = torch.randperm(requested_crops)
             crop_end = torch.cat((crop_end, _crop_end))[shuffle]
             crop_start = torch.cat((crop_start, _crop_start))[shuffle]
+
+    # modulate variance
+    if len(crops) and variance != 1.:
+        view = (-1, 2)
+        low_var = 0
+        if shape[1] > 1: # apply variance only to channels
+            view = (-1, shape[1], 2)
+            low_var = (slice(0,None), slice(0,1), slice(0,None))
+        crop_end = crop_end.view(view)
+        crop_start = crop_start.view(view)
+        crop_end = torch.lerp(crop_end[low_var], crop_end, variance).view(-1,2)
+        crop_start = torch.lerp(crop_start[low_var], crop_start, variance).view(-1,2)
+
+    # print(f"crop_start=torch.tensor({crop_start.tolist()})")
 
     crop_start = crop_start.view(shape).to(dtype=torch.int64)
     crop_end = crop_end.view(shape).add(crop_start).to(dtype=torch.int64)
