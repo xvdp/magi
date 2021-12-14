@@ -42,11 +42,10 @@ def transform(data: TensorItem,
     Args to transform function
         **kwargs    function arguments
     """
-    mode = None if 'mode' not in kwargs else kwargs.pop('mode')
-
+    
     # Apply transform to tensor
     if isinstance(data, torch.Tensor):
-        return func(data, mode=mode, **kwargs)
+        return func(data, **kwargs)
 
     # Clone if requested
     if for_display:
@@ -61,8 +60,12 @@ def transform(data: TensorItem,
     # ie. single element Item positions may be tensor, batch Item, positions will be lists.
     indices = data.get_indices(kind=kind_keys)
     assert indices, f"Cannot Transform, missing Item.kind keys in {kind_keys}"
+
+    
     for i in indices:
-        data[i] = func(data[i], mode=data.form[i], **kwargs)
+        if 'form' in data.keys:
+            kwargs['mode'] = data.form[i]
+        data[i] = func(data[i], **kwargs)
     return data
 
 @memory_profiler

@@ -45,6 +45,7 @@ All transforms, other than 'IO' and 'Compose' can be randomized. Randomization i
 
 ## Sizing Transforms
 **`__type__ = 'Sizing'`**
+
 Transforms leveraging nn.interpolate. Dimensions can be expanded per batch or channel. Sizing transforms have no bernoulli probability p and target size is constant, random parameters are related to cropping and transforming only.
 ### **ResizeCrop()**
 With defaults statistically identical to `RandomResizeCrop` from torchvision transforms.
@@ -79,16 +80,20 @@ Simple version of image resizing.
 **`__type__ = 'Appearance'`**
 
 ### **Normalize()**
-With alias  `MeanCenter()` standard normalization. Typycally for `x` in dataset `X`, `(x - X.mean())/X.std()`. Arguments `'mean'` and `'std'`  can inherit from class `Values()` i.e be probabilistic. 
+With alias  `MeanCenter()` with default settings is standard normalization with mean and standard deviation from ImageNet.
+
+For `x` in dataset `X`, ` x_1 = (x - X.mean())/X.std()`, where X.mean and X.std are input arguments.
+
+Arguments `'mean'` and `'std'` can be probabilisitic and with arg `expand_dims`, like other appearance transforms, be computed per batch, channel, row and or column.
 <div align="center">
   <img width="100%" src=".github/Normalize_random.png">
 </div>
 
 ### **UnNormalize()**
-Inverse of normalize `x * X.std() + X.mean()`, has alias `UnMeanCenter()`
+Inverse of normalize `x_1 = x * X.std() + X.mean()`, has alias `UnMeanCenter()`. Similar probabilisitc args. and expansion.
 
 ### **NormToRange()**
-Feature scaling, by default to 0-1, most common use case `NormToRange(minimum=0, maximum=1)`. `'minimum'` and `'maximum'` can inherit from class `Values()` i.e. be probabilistic.
+Feature scaling, by default to 0-1, most common use case `NormToRange(minimum=0, maximum=1)`. Arguments `'minimum'` and `'maximum'` can be probabilistic and expanded as other appearance transforms.
 
 ### **Saturate()**
 One probabilistic argument `'a'`. Changes saturation values, `Saturate(a=0, p=1)` converts to grayscale. `Saturate(a=-1, b=2, distribution='Uniform', p=0.5, p_dims=0, expand_dims=(0,1)) ` outputs random distribution samples between inverse and over saturation over samples and channels, with 50% probability over sample.

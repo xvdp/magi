@@ -1,13 +1,21 @@
 # Magi
 *Magister Lt. teacher*
 
-**STATUS: version 0.0.7 - passes tests,  WIP - currently in translation from private repos**
+**STATUS: version 0.0.9 - passes tests,  WIP - currently in translation from private repos**
+
+## Installation
+Requires python > 3.4, testing on pytorch 1.7 - 1.9
+```bash
+git clone --recursive https://github.com/xvdp/magi # recursive as this requires some minor functions from xvdp/koreto
+cd magi
+pip install .
+```
 
 In progress, not guaranteed to be back compatible.
 I'm translating an augmentation from untested private repos., and to make sure that I can stop rewriting the same code, generalizing at the same time. Should have comparable transforms to most augmentation pipleines shortly.
 
 
-A ollection of augmentation, training and dataloader wrappers for `pytorch`.
+A collection of augmentation, training and dataloader wrappers for `pytorch`.
 
 *Design intent, or why do we need another augmentation framework?*  I do.
 
@@ -20,7 +28,7 @@ One may want to pass images alongside with annotations, sounds or graphs into a 
 
 Parts:<br>
 1. Features - data container `Item`
-2. Agumentation -
+2. Agumentation - [Augumentations](AUGMENT.md)
 3. Datasets and Dataloaders
 
 

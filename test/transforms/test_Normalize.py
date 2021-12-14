@@ -83,7 +83,7 @@ def test_for_display_local():
     assert not torch.all(torch.eq(d[0], x[0])).item(), f"norm for display should NOT clobber input"
 
 def test_block_clone_grad():
-    dset =     dset = get_dataset('ImageNet', for_display=True)
+    dset = get_dataset('ImageNet', for_display=True)
     assert config.FOR_DISPLAY, f"FOR_DISPLAY should be False, globally"
     N = Normalize()
     d = dset.__getitem__()

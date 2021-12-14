@@ -5,12 +5,9 @@ Sizing Transforms, output tensor size is changed
 
 from typing import Union, Optional
 import torch
-from torch import distributions
 
-from magi.transforms.functional_base import TensorItem
 from .transforms_base import Transform
-from .transforms_rnd import Probs, Values, LogUniform, validate_dims
-from ..utils import assert_in
+from .transforms_rnd import Values, validate_dims
 from . import functional_siz as F
 
 # pylint: disable=no-member

@@ -1,11 +1,11 @@
 """@xvdp
 functional for sizing transforms
 """
-from typing import Union, Optional
+from typing import Union
 import torch
 from torch import nn
 from koreto import Col
-from .functional_base import transform, transform_profile, get_sample_like, get_bernoulli_like
+from .functional_base import transform, transform_profile, get_sample_like
 from .functional_base import Tensorish, TensorItem
 from ..utils import get_mgrid, slicer, crop_targets, transform_target, assert_equal, assert_in
 from ..utils import ij__ji_mode, pos_offset__pos_pos_mode, pos_pos__pos_offset_mode
