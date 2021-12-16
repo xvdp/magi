@@ -42,7 +42,6 @@ def transform(data: TensorItem,
     Args to transform function
         **kwargs    function arguments
     """
-    
     # Apply transform to tensor
     if isinstance(data, torch.Tensor):
         return func(data, **kwargs)
@@ -61,7 +60,6 @@ def transform(data: TensorItem,
     indices = data.get_indices(kind=kind_keys)
     assert indices, f"Cannot Transform, missing Item.kind keys in {kind_keys}"
 
-    
     for i in indices:
         if 'form' in data.keys:
             kwargs['mode'] = data.form[i]

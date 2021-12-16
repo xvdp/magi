@@ -14,7 +14,6 @@ Annotation Tensor Lists will be transformed by Affine
 """
 from typing import Union, Optional
 
-import numpy as np
 import torch
 from koreto import Col
 from .. import config
@@ -29,6 +28,9 @@ _Device = Union[str, torch.device]
 # Transform             (object)    + update_kwargs, auto __repr__
 # TransformAppearance   (Transform)
 #
+def is_magi_transform(transform):
+    return "magi" in transform.__class__.mro()[0].__module__
+
 class Transform(object):
     """ base transform class
     """

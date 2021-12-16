@@ -3,6 +3,7 @@
 Image opening utilities
 """
 from typing import Union, Optional
+from collections.abc import Callable
 from inspect import currentframe, getframeinfo
 import warnings
 import logging
@@ -25,10 +26,7 @@ from koreto.utils import ObjDict
 from . import check_contiguous
 from .. import config
 
-# torchvision transforms are Modules
-_TT = torch.nn.modules.module.Module
 _Vector = Union[torch.Tensor, np.ndarray]
-
 
 # pylint: disable=no-member
 # pylint: disable=not-callable
@@ -52,10 +50,9 @@ def _image_backends(backend: Optional[str] = None,
 def open_acc(img: str,
              dtype: str = "float32",
              out_type: str = "numpy",
-             channels: Optional[int] = None,
-             transforms: Optional[_TT] = None) -> Optional[_Vector]:
+             channels: Optional[int] = None) -> Optional[_Vector]:
     """ opens image using accimage
-    faster for jpg which is stored same as torch tensors, CHW
+    faster for jpg which is stored same as torch tensors, float32 CHW
     Args
         img         (str) image path
         dtype       (str ["float32"])
@@ -64,11 +61,7 @@ def open_acc(img: str,
         transforms  (torchvision.transforms [None])
     """
     try:
-        # loads image as float32 CHW
         pic = accimage.Image(img)
-        if transforms is not None:
-            pic = transforms(pic)
-
         out = np.zeros([pic.channels, pic.height, pic.width], dtype="float32")
         pic.copyto(out)
 
@@ -77,7 +70,9 @@ def open_acc(img: str,
         if out_type == "numpy":
             out = out.transpose(1, 2, 0)
             return np_fix_channels(out, channels, fillvalue=None)
+    
         return _to_torch(out)
+
     except:
         logging.debug("accimage could not resolve image")
 
@@ -86,9 +81,8 @@ def open_acc(img: str,
 def open_pil(img: str,
              dtype: str = "float32",
              out_type: str = "numpy",
-             channels: Optional[int] = None,
-             transforms: Optional[_TT] = None) -> Optional[_Vector]:
-    """ opens image using PIL, returns np.ndarray or torch.tensor
+             channels: Optional[int] = None) -> Optional[_Vector]:
+    """ opens image using PIL, returns np.ndarray or torch.tensor as uint8 HWC
     Args
         img         (str) image path
         dtype       (str ["float32"])
@@ -96,12 +90,8 @@ def open_pil(img: str,
         channels    (int [None: same as stored]), | 1,3,4
         transforms  (torchvision.transforms [None])
     """
-    # loads image as uint8 HWC
     try:
         out = Image.open(img)
-        if transforms is not None:
-            out = transforms(out)
-
         out = np.array(out, copy=False)
         out = to_np_dtype(out, dtype, out_type=out_type)
         out = np_fix_channels(out, channels, fillvalue=None)
@@ -118,8 +108,7 @@ def open_pil(img: str,
 def open_cv(img: str,
              dtype: str = "float32",
              out_type: str = "numpy",
-             channels: Optional[int] = None,
-             transforms: Optional[_TT] = None) -> Optional[_Vector]:
+             channels: Optional[int] = None) -> Optional[_Vector]:
     """ opens image using opencv, returns np.ndarray or torch.tensor
     Args
         img         (str) image path
@@ -130,8 +119,6 @@ def open_cv(img: str,
     """
     try:
         out = cv2.cvtColor(cv2.imread(img), cv2.IMREAD_UNCHANGED)
-        if transforms is not None:
-            out = transforms(out)
 
         out = to_np_dtype(out, dtype, out_type=out_type)
         out = np_fix_channels(out, channels, fillvalue=None)
@@ -219,8 +206,7 @@ def open_url(url: str,
              cache_name: Optional[str] = None,
              dtype: str = "float32",
              out_type: str = "torch",
-             channels: Optional[int] = None,
-             transforms: Optional[_TT] = None) -> Optional[_Vector]:
+             channels: Optional[int] = None) -> Optional[_Vector]:
     """ Opens url image and caches to 'cache_name' if not None
     Args
         url         (str) valid url
@@ -235,8 +221,6 @@ def open_url(url: str,
         try:
             out = Image.open(BytesIO(response.content))
             cache_image(out, url, cache_name)
-            if transforms is not None:
-                out = transforms(out)
 
             out = np.array(out, copy=False)
             out = to_np_dtype(out, dtype, out_type=out_type)
@@ -257,7 +241,7 @@ def open_img(img: str,
              grad: Optional[bool] = None,
              device: Union[None, str, torch.device] = None,
              backend: Optional[str] = None,
-             transforms: Optional[_TT] = None,
+             transforms: Optional[Callable] = None,
              channels: Optional[int] = None,
              verbose: bool = True) -> Optional[_Vector]:
     """ image open
@@ -274,7 +258,7 @@ def open_img(img: str,
     if not osp.isfile(img) and urlparse(img).scheme:
         cached_name = get_cache_name(img, cache_dir=None)
         if not osp.isfile(cached_name):
-            out = open_url(img, cached_name, dtype=dtype, out_type=out_type, channels=channels, transforms=transforms)
+            out = open_url(img, cached_name, dtype=dtype, out_type=out_type, channels=channels)
         else:
             img = cached_name
 
@@ -283,11 +267,11 @@ def open_img(img: str,
         backend = _backends.pop(0)
         # cycle through available _BACKENDS
         if backend == "accimage":
-            out = open_acc(img, dtype=dtype, out_type=out_type, channels=channels, transforms=transforms)
+            out = open_acc(img, dtype=dtype, out_type=out_type, channels=channels)
         elif backend == "PIL":
-            out = open_pil(img, dtype=dtype, out_type=out_type, channels=channels, transforms=transforms)
+            out = open_pil(img, dtype=dtype, out_type=out_type, channels=channels)
         elif backend == "opencv":
-            out = open_cv(img, dtype=dtype, out_type=out_type, channels=channels, transforms=transforms)
+            out = open_cv(img, dtype=dtype, out_type=out_type, channels=channels)
     assert out is not None, f"could not open img {img} with available _BACKENDS {_backends}"
 
     if out_type == "torch":
@@ -298,6 +282,11 @@ def open_img(img: str,
             out = out.to(device=device)
         if grad is not None and out.requires_grad != grad:
             out.requires_grad = grad
+
+        if transforms is not None:
+           out = transforms(out)
+        return out
+
 
     return out
 

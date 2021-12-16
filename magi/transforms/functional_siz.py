@@ -7,6 +7,7 @@ from torch import nn
 from koreto import Col
 from .functional_base import transform, transform_profile, get_sample_like
 from .functional_base import Tensorish, TensorItem
+from ..features import Item
 from ..utils import get_mgrid, slicer, crop_targets, transform_target, assert_equal, assert_in
 from ..utils import ij__ji_mode, pos_offset__pos_pos_mode, pos_pos__pos_offset_mode
 
@@ -30,14 +31,14 @@ def squeeze_crop(data: TensorItem,
         interpolation   str ['linear'] | 'cubic' | 'nearest' | 'area'
     """
     crop_start, crop_end = _get_squeeze_crop_dims(data, ratio)
-    size = _resolve_size(data[0].shape, size)
+    size = _resolve_size(data, size)
 
     _transform = transform_profile if profile else transform
     data = _transform(data=data, func=crop_resize_tensor, for_display=for_display,
                       kind_keys=['data_2d'], crop_start=crop_start, crop_end=crop_end,
                       target_size=size, interpolation=interpolation, align_corners=align_corners)
 
-    if data.get_indices(kind='pos_2d'):
+    if isinstance(data, Item) and data.get_indices(kind='pos_2d'):
         data = _transform(data=data, func=crop_resize_targets, for_display=False,
                         kind_keys=['pos_2d'], crop_start=crop_start, crop_end=crop_end,
                         target_size=size)
@@ -70,15 +71,15 @@ def crop_resize(data: TensorItem,
 
         interpolation   str ['linear'] | 'cubic' | 'nearest' | 'area'
     """
-    size = _resolve_size(data[0].shape, size)
-    crop_start, crop_end = _get_crop_resize_dims(data[0], scale, ratio, i, j, variance)
+    size = _resolve_size(data, size)
+    crop_start, crop_end = _get_crop_resize_dims(data, scale, ratio, i, j, variance)
 
     _transform = transform_profile if profile else transform
     data = _transform(data=data, func=crop_resize_tensor, for_display=for_display,
                       kind_keys=['data_2d'], crop_start=crop_start, crop_end=crop_end,
                       target_size=size, interpolation=interpolation, align_corners=align_corners)
 
-    if data.get_indices(kind='pos_2d'):
+    if isinstance(data, Item) and data.get_indices(kind='pos_2d'):
         data = _transform(data=data, func=crop_resize_targets, for_display=False,
                         kind_keys=['pos_2d'], crop_start=crop_start, crop_end=crop_end,
                         target_size=size)
@@ -94,7 +95,7 @@ def resize_tensor(x: torch.Tensor,
                   align_corners: bool = True) -> torch.Tensor:
     """ Resizes tensor
     """
-    size = _resolve_size(x.shape, size)
+    size = _resolve_size(x, size)
     if x.shape[2:] == size:
         return x
 
@@ -123,7 +124,7 @@ def crop_resize_tensor(x: torch.Tensor,
 
     crop_start = crop_start.view(-1, 2)
     crop_end = crop_end.view(-1, 2)
-    target_size = _resolve_size(x.shape, target_size)
+    target_size = _resolve_size(x, target_size)
 
     # single crop and resize
     if not expand_dims:
@@ -257,13 +258,14 @@ def _get_squeeze_crop_dims(x: TensorItem, ratio: Tensorish) -> tuple:
     end = img_size.sub(start)
     return start, end
 
-def _resolve_size(input_shape: tuple, target_size: Union[int, tuple, None] = None) -> tuple:
+def _resolve_size(x: TensorItem, target_size: Union[int, tuple, None] = None) -> tuple:
     """ Returns a tuple of same dims as input_shape[2:], ie, HW, HWD etc.
     Args
-        input_shape     shape of tensor NC...
+        x               tensor or tensor item.
         target_size     (int, tuple, None) if None, min(input_shape[2:])
     """
-    input_size = input_shape[2:] # ouput same dims as input
+    input_size = x.shape[2:] if torch.is_tensor(x) else x[0].shape[2:]
+
     if target_size is None:
         target_size = min(input_size)
     if isinstance(target_size, int):

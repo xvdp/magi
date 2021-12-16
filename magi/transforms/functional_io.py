@@ -3,16 +3,18 @@ functional for  transforms.__type__ = "IO"
 
 """
 from typing import Union, Optional
+from collections.abc import Callable
 import logging
 import os.path as osp
 from urllib.parse import urlparse
 import numpy as np
 import torch
-import torchvision.transforms as TT
 
 from .. import config
 from ..features import Item
 from ..utils import open_img, check_contiguous, show_tensor, closest_square
+
+_Image = Union[torch.Tensor, np.ndarray, list]
 
 # pylint: disable=no-member
 def open_file(file_name: Union[str, list, tuple],
@@ -21,8 +23,9 @@ def open_file(file_name: Union[str, list, tuple],
               grad: bool = False,
               out_type: str = "torch",
               channels: int = None,
-              transforms: TT = None,
-              verbose: bool = False) -> Union[torch.Tensor, np.ndarray, list]:
+              transforms: Optional[Callable] = None,
+              verbose: bool = False,
+              for_display: Optional[bool] = None) -> _Image:
     """
     Args    file_name   (str, list), file, url or list of files and urls
                 if list, and images same size, concatente, numpy or tensor, else list
@@ -35,6 +38,8 @@ def open_file(file_name: Union[str, list, tuple],
             channels    (int [None: same as input]) | 1,3,4
             transforms  (torchvision.transforms)
     """
+    if for_display is not None:
+        config.set_for_display(for_display)
     if isinstance(file_name, (list, tuple)):
         batchlist = []
         size = None

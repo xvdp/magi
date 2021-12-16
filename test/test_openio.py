@@ -19,11 +19,11 @@ def test_openio_open_url_torch_no_cache():
     url = source_url()
     if url:
         dtype="float32"
-        img = open_url(url, cache_name=None, dtype=dtype, out_type="torch", channels=None, transforms=None)
+        img = open_url(url, cache_name=None, dtype=dtype, out_type="torch", channels=None)
         assert_msg("dtype", torch.__dict__[dtype], img.dtype, name=url, fun="imageio.open_url")
 
         dtype="float16"
-        img = open_url(url, cache_name=None, dtype=dtype, out_type="torch", channels=None, transforms=None)
+        img = open_url(url, cache_name=None, dtype=dtype, out_type="torch", channels=None)
         assert_msg("dtype", torch.__dict__[dtype], img.dtype, name=url, fun="imageio.open_url")
 
 def test_openio_open_url_numpy_no_cache():
@@ -31,12 +31,12 @@ def test_openio_open_url_numpy_no_cache():
     if url:
         dtype="float32"
         out_type="numpy"
-        img = open_url(url, cache_name=None, dtype=dtype, out_type=out_type, channels=None, transforms=None)
+        img = open_url(url, cache_name=None, dtype=dtype, out_type=out_type, channels=None)
         assert_msg("dtype", dtype, img.dtype.name, name=url, fun="imageio.open_url")
 
         dtype="uint8"
         out_type="numpy"
-        img = open_url(url, cache_name=None, dtype=dtype, out_type=out_type, channels=None, transforms=None)
+        img = open_url(url, cache_name=None, dtype=dtype, out_type=out_type, channels=None)
         assert_msg("dtype", dtype, img.dtype.name, name=url, fun="imageio.open_url")
 
 def test_openio_open_url_numpy_cache():
@@ -46,14 +46,14 @@ def test_openio_open_url_numpy_cache():
         cached = get_cache_name(url)
         dtype="float32"
         out_type="numpy"
-        img = open_url(url, cache_name=cached, dtype=dtype, out_type=out_type, channels=None, transforms=None)
+        img = open_url(url, cache_name=cached, dtype=dtype, out_type=out_type, channels=None)
         assert_msg("dtype", dtype, img.dtype.name, name=url, fun="imageio.open_url")
         assert osp.isfile(cached), f" file '{cached}' not found"
 
         dtype="uint8"
         out_type="numpy"
         channels=1
-        img = open_url(url, cache_name=cached, dtype=dtype, out_type=out_type, channels=channels, transforms=None)
+        img = open_url(url, cache_name=cached, dtype=dtype, out_type=out_type, channels=channels)
         assert_msg("dtype", dtype, img.dtype.name, name=url, fun="imageio.open_url")
         assert_msg("channels", channels, int(img.shape[-1]), name=url, fun="imageio.open_url")
         if osp.isfile(cached):

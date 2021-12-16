@@ -12,23 +12,24 @@ Or batches with position data associated to those tensors, g.g. bounding boxes o
 
 Annotation Tensor Lists will be transformed by Affine
 
-
 """
 from typing import Union, Optional
+from collections.abc import Callable
 import logging
 import numpy as np
 import torch
 from torch.distributions import Bernoulli
-import torchvision.transforms as TT
 from koreto import Col
 
-from .transforms_base import Transform
+from .transforms_base import Transform, is_magi_transform
 from . import functional_io as F
 from .. import config
 from ..utils import warn_grad_cloning, warn_np_dtypes
 
 
 _tensorish = (int, float, list, tuple, np.ndarray, torch.Tensor)
+_Image = Union[torch.Tensor, np.ndarray, list]
+
 # pylint: disable=no-member
 #
 # IO Transforms
@@ -67,8 +68,9 @@ class Open(Transform):
                  for_display: Optional[bool] = None,
                  out_type: str = "torch",
                  channels: int = 3,
-                 transforms: TT = None,
+                 transforms: Optional[Callable] = None,
                  force_global: bool = False) -> None:
+        super().__init__(for_display=for_display)
 
         # out_type can only be set on __init__
         self.out_type = out_type if out_type in ("torch", "numpy") else "torch"
@@ -83,7 +85,7 @@ class Open(Transform):
             self.grad = grad
             warn_grad_cloning(for_display, grad, in_config=True)
 
-    def __call__(self, name: Union[str, list, tuple], **kwargs):
+    def __call__(self, name: Union[str, list, tuple], **kwargs) -> _Image:
         """
         Args:
             name        (str, list),  valid file name(s)
@@ -113,14 +115,12 @@ class Open(Transform):
 
         if "grad" in kwargs or "for_display" in kwargs: # ensure !grad or for_display != grad
             for_display = kwargs["for_display"] if "for_display" in kwargs else config.FOR_DISPLAY
-            grad = kwargs["grad"] if "grad" in kwargs else self.grad
-            warn_grad_cloning(for_display, grad, in_config=True)
+            if 'grad' in self.__dict__: # only on torch output
+                grad = kwargs["grad"] if "grad" in kwargs else self.grad
+                warn_grad_cloning(for_display, grad, in_config=True)
 
         return kwargs
 
-"""
-self.device = self._check_valid({"device": device})["device"]
-"""
 
 class Show(Transform):
     """
@@ -153,7 +153,8 @@ class Show(Transform):
                  width: int = 20,
                  height: int = 10,
                  save: Optional[str] = None,
-                 unfold_channels: bool = False) -> None:
+                 unfold_channels: bool = False, 
+                 for_display: Optional[bool] = None) -> None:
         """
         TODO: cleanup removed args
                 #  target_rotation: bool = True,
@@ -163,6 +164,7 @@ class Show(Transform):
                 # self.annot = annot
                 # self.max_imgs = max_imgs
         """
+        super().__init__(for_display=for_display)
         self.ncols = ncols
         self.pad = pad
         self.show_targets = show_targets
@@ -197,25 +199,48 @@ class Compose(Transform):
         transforms (list of ``Transform`` objects): list of transforms to compose.
         p   (float >0, <=1 [1.0]) Bernoulli probability that any of the transforms will be performed
             (list, tuple same len as transforms), Bernoulli probability per transform
+        ..note: transforms of __type__ "Sizing" or "IO" are always 1.
 
     Example:
     # center crop always, desaturate with prob of 50%
     >>> transforms.Compose([CenterCrop(224), Saturate(a=0)], p=(1, 0.5))
     """
     __type__ = "Compose"
-    def __init__(self, transforms: Union[list, tuple], p: int = 1.0) -> None:
-        self.transforms = transforms
+    def __init__(self,
+                 transforms: Union[list, tuple],
+                 p: _tensorish = 1.0,
+                 for_display: Optional[bool] = None) -> None:
+        super().__init__(for_display=for_display)
 
+        self.transforms = transforms
+        self.p = Bernoulli(probs=self._get_probs(transforms, p))
+
+    def __call__(self, data: Union[torch.Tensor, list], **kwargs) -> Union[torch.Tensor, list]:
+        probs = self.p.sample()
+        for i, transform in enumerate(self.transforms):
+            if probs[i]:
+                if not is_magi_transform and not torch.is_tensor(data):
+                    # apply non magi transforms to tensor only
+                    data[0] = transform(data[0])
+                else:
+                    data = transform(data)
+
+        return data
+
+    @staticmethod
+    def _get_probs(transforms: Union[list, tuple], p: _tensorish) -> torch.Tensor:
+        """ Returns valid tensor of probabilities
+        validates transforms passed to Compose are 'magi'
+        IO and Sizing always have a probability of 1.
+        """
         assert isinstance(p, _tensorish), f"'p: expected {_tensorish} got {type(p)}"
         if isinstance(p, (float, int)):
             p = [p] * len(transforms)
-        assert all(_p > 0 and _p <= 1 for _p in p), f"expected probs > 0 and <=1  got({p})"
-        self.p = Bernoulli(probs=torch.astensor(p))
+        elif isinstance(p, tuple):
+            p = list(p)
 
-    def __call__(self, data: torch.Tensor) -> torch.Tensor:
-        probs = self.p.sample()
-        for i, _t in enumerate(self.transforms):
-            if probs[i]:
-                data = _t(data)
-
-        return data
+        assert len(p) == len(transforms), f"expected probability per transform, got {len(transforms)} transforms and {len(p)} probabilities"
+        for i, transform in enumerate(transforms):
+            if is_magi_transform and transform.__type__ in ("Sizing", "IO"):
+                p[i] = 1
+        return torch.clamp(torch.as_tensor(p, dtype=torch.float32), 0, 1)
